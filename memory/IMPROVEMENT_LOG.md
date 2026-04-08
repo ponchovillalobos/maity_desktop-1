@@ -96,3 +96,25 @@ Fallos descubren 3 hallazgos nuevos:
 - **Notas:** Requirió fix manual de trailing whitespace en 2 líneas de whisper_engine.rs (bug interno de rustfmt con literales largos en match arms). El cherry-pick a assembly/bootstrap generó conflicto en incremental_saver.rs (donde también vive el fix de QA-008); resuelto manualmente manteniendo `for i in 0..120u64`.
 - **Estado:** in-progress (PR #5 abierto)
 - **Qué mejora para el usuario:** No cambia nada visible en la app, pero desbloquea el primer quality gate del sistema de auto-mejora. De aquí en adelante cada PR puede pasar `cargo fmt --check` sin ruido, y los diffs en revisión son solo cambios de lógica. Pre-requisito obligatorio para tener un CI estricto cuando lancemos B2B — los clientes enterprise esperan pipelines verdes con fmt+clippy+test.
+
+### 2026-04-07 — Iter #5 — RUST-009 integrado (NO hay bug zero data loss)
+
+- **Experto:** 🦀 rust_tauri
+- **Título:** test_checkpoint_creation: bug del TEST (stereo 48k samples), no de producción
+- **Branch:** `improve/RUST-009-test-checkpoint-stereo`
+- **PR:** https://github.com/ponchovillalobos/maity_desktop-1/pull/6 (supersedea #3)
+- **Archivos:** `frontend/src-tauri/src/audio/incremental_saver.rs`
+- **Severity:** era critical → reclasificado high (era bug de test, no de producción)
+- **Quality gates:** cargo test CPU-only rc=0 (29s compile + 1.91s test)
+- **Qué mejora para el usuario:** La garantía de zero data loss SIGUE INTACTA en producción. Era el test midiendo mal (mono en lugar de stereo interleaved). Ahora el test valida correctamente y cualquier regresión futura al checkpointing de 30s será detectada antes de mergear.
+
+### 2026-04-07 — Iter #6 — LLM-008 (i18n template)
+
+- **Experto:** 🤖 ai_llm
+- **Título:** test_get_builtin_template i18n — formaliza política es-419-first
+- **Branch:** `improve/LLM-008-template-i18n`
+- **PR:** https://github.com/ponchovillalobos/maity_desktop-1/pull/7
+- **Archivos:** `frontend/src-tauri/src/summary/templates/loader.rs` (+3 -1)
+- **Impact/Effort:** 5/10 · 1/10 · prio 5.0
+- **Quality gates:** cargo test CPU-only rc=0 (1m45s compile + 0.00s test)
+- **Qué mejora para el usuario:** Un test verde más en la suite. Formalizamos en código la política "templates en español" del producto es-419-first. Los clientes B2B hispanohablantes ven los nombres en su idioma.

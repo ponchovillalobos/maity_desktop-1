@@ -26,3 +26,5 @@ Histórico de métricas por iteración. Línea por commit/ciclo.
 | 2026-04-07 | 3 | PY-003 | 74 ok / 3 fail | 0 | TBD | 0/87 (3 in-progress) | PR #4 uvicorn env config. cargo test --workspace ahora corre real (1m08s): 74 pass, 3 fail, 1 ignored. Descubre RUST-008/009/LLM-008. |
 | 2026-04-07 | 3.5 | (test run discovery) | 74/77 | 0 | TBD | 0/87 | RUST-009 CRITICAL: checkpoint logic compromete zero data loss. Top priority. |
 | 2026-04-07 | 4 | RUST-010 | 74/77 | 0 | TBD | 0/88 (4 in-progress) | PR #5 cargo fmt --all (123 archivos). cargo check rc=0 34s, cargo fmt --check rc=0 (era rc=1). Primer quality gate desbloqueado. |
+| 2026-04-07 | 5 | RUST-009 | 75/77 ok | 0 | TBD | 0/88 (5 in-progress) | PR #6 fix checkpoint test stereo 48k. NO era bug de zero data loss (reclasificado high). cargo test CPU-only rc=0. |
+| 2026-04-07 | 6 | LLM-008 | 76/77 ok | 0 | TBD | 0/88 (6 in-progress) | PR #7 i18n template 'Standup Diario'. Formaliza política es-419-first. cargo test CPU-only rc=0. |
