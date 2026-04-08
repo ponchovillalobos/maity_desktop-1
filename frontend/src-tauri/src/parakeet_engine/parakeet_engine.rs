@@ -111,6 +111,13 @@ impl From<std::io::Error> for ParakeetEngineError {
     }
 }
 
+/// UX-012: recycle the ONNX session every N inferences to contain the slow
+/// native-memory growth of onnxruntime's internal arenas. 100 is a
+/// conservative value — Parakeet inference is ~0.5s on CPU, so a recycle
+/// every 100 calls is roughly once per ~50s of continuous speech, which is
+/// well below the noticeable user threshold.
+const PARAKEET_RECYCLE_EVERY: u64 = 100;
+
 pub struct ParakeetEngine {
     models_dir: PathBuf,
     current_model: Arc<RwLock<Option<ParakeetModel>>>,
@@ -119,6 +126,9 @@ pub struct ParakeetEngine {
     cancel_download_flag: Arc<RwLock<Option<String>>>, // Model name being cancelled
     // Active downloads tracking to prevent concurrent downloads
     pub(crate) active_downloads: Arc<RwLock<HashSet<String>>>, // Set of models currently being downloaded
+    /// UX-012: running counter of successful inferences, used to decide when
+    /// to recycle the ONNX session to bound native memory.
+    inference_count: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl ParakeetEngine {
@@ -160,6 +170,7 @@ impl ParakeetEngine {
             cancel_download_flag: Arc::new(RwLock::new(None)),
             // Initialize active downloads tracking
             active_downloads: Arc::new(RwLock::new(HashSet::new())),
+            inference_count: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         })
     }
 
@@ -450,8 +461,42 @@ impl ParakeetEngine {
         self.current_model.read().await.is_some()
     }
 
-    /// Transcribe audio samples using the loaded Parakeet model
+    /// Transcribe audio samples using the loaded Parakeet model.
+    ///
+    /// UX-012: every `PARAKEET_RECYCLE_EVERY` successful inferences we drop
+    /// the current ONNX session and reload it from disk. This contains the
+    /// slow native-memory growth of onnxruntime's internal arenas without
+    /// affecting correctness — the model weights on disk haven't changed,
+    /// only the in-memory session state is reset.
     pub async fn transcribe_audio(&self, audio_data: Vec<f32>) -> Result<String> {
+        use std::sync::atomic::Ordering;
+
+        // Step 1: check if we need to recycle BEFORE taking the write lock on
+        // current_model, so the recycle path doesn't hold two locks.
+        let current_count = self.inference_count.load(Ordering::Relaxed);
+        if current_count > 0 && current_count % PARAKEET_RECYCLE_EVERY == 0 {
+            if let Some(model_name) = self.current_model_name.read().await.clone() {
+                log::info!(
+                    "UX-012: recycling ONNX session after {} inferences (model={})",
+                    current_count,
+                    model_name
+                );
+                // Drop the existing model first to free native memory.
+                *self.current_model.write().await = None;
+                // current_model_name is cleared by load_model's "already loaded"
+                // check — force a true reload by clearing it explicitly.
+                *self.current_model_name.write().await = None;
+                if let Err(e) = self.load_model(&model_name).await {
+                    log::warn!(
+                        "UX-012: session recycle reload failed for {}: {} — continuing with fresh model load attempt on next call",
+                        model_name,
+                        e
+                    );
+                    return Err(anyhow!("Parakeet session recycle failed: {}", e));
+                }
+            }
+        }
+
         let mut model_guard = self.current_model.write().await;
         let model = model_guard
             .as_mut()
@@ -468,6 +513,9 @@ impl ParakeetEngine {
         let result = model
             .transcribe_samples(audio_data)
             .map_err(|e| anyhow!("Parakeet transcription failed: {}", e))?;
+
+        // Only count successful inferences toward the recycle threshold.
+        self.inference_count.fetch_add(1, Ordering::Relaxed);
 
         log::debug!("Parakeet transcription result: '{}'", result.text);
 
