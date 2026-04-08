@@ -227,7 +227,9 @@ mod tests {
         assert!(template.is_ok());
 
         let template = template.unwrap();
-        assert_eq!(template.name, "Daily Standup");
+        // LLM-008: templates built-in están en español (es-419 first).
+        // Ver frontend/src-tauri/templates/daily_standup.json
+        assert_eq!(template.name, "Standup Diario");
         assert!(!template.sections.is_empty());
     }
 
