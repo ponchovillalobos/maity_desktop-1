@@ -497,6 +497,15 @@ main p.lead { margin:0 0 18px; color:var(--muted); font-size:13px; }
   border:1px solid rgba(39,174,96,0.4); border-radius:8px; padding:8px 14px;
   font-size:11px; color:#2ecc71; margin-bottom:18px; display:flex; align-items:center;
   gap:8px; font-weight:600; letter-spacing:0.3px; }
+
+.global-report { background:linear-gradient(135deg, rgba(39,174,96,0.08), rgba(52,152,219,0.05));
+  border:1px solid rgba(39,174,96,0.3); border-radius:12px; padding:20px 24px; margin-bottom:20px; }
+.global-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; }
+.global-item { background:var(--card); border:1px solid var(--border); border-radius:8px;
+  padding:14px; text-align:center; }
+.global-item .gn { font-size:28px; font-weight:800; line-height:1; }
+.global-item .gl { font-size:10px; color:var(--muted); text-transform:uppercase;
+  letter-spacing:0.5px; margin-top:6px; font-weight:600; }
 </style>
 </head>
 <body>
@@ -818,10 +827,42 @@ function renderDashboard() {
   const m = METRICS;
   const cargoSt = m.build.cargo_status;
   const npmSt = m.build.npm_status;
+  const all = flat();
+  const done = all.filter(f => f.status === 'done').length;
+  const ipArr = all.filter(f => f.status === 'in-progress');
+  const ip = ipArr.length;
+  const pending = all.filter(f => f.status === 'pending').length;
+  const crit = all.filter(f => f.severity === 'critical').length;
+  const critDone = all.filter(f => f.severity === 'critical' && f.status !== 'pending').length;
+  const totalShipped = done + ip;
 
   return `
     <h2>📈 Dashboard de Mejora Continua</h2>
     <p class="lead">Métricas live del repo. <button class="refresh-btn" onclick="refreshMetrics()">↻ Refrescar</button></p>
+
+    <div class="global-report">
+      <h3 style="margin:0 0 14px;color:#27ae60;font-size:13px">🎯 REPORTE GLOBAL — Lo que ya se hizo</h3>
+      <div class="global-grid">
+        <div class="global-item"><div class="gn" style="color:#27ae60">${DATA.iterations || 0}</div><div class="gl">iteraciones completadas</div></div>
+        <div class="global-item"><div class="gn" style="color:#27ae60">${DATA.commits || 0}</div><div class="gl">commits del sistema</div></div>
+        <div class="global-item"><div class="gn" style="color:#3498db">${ip}</div><div class="gl">hallazgos en PR (in-progress)</div></div>
+        <div class="global-item"><div class="gn" style="color:#2ecc71">${done}</div><div class="gl">hallazgos done (merged)</div></div>
+        <div class="global-item"><div class="gn" style="color:#f1c40f">${pending}</div><div class="gl">hallazgos pending</div></div>
+        <div class="global-item"><div class="gn" style="color:#e74c3c">${crit}</div><div class="gl">críticos totales</div></div>
+        <div class="global-item"><div class="gn" style="color:#9b59b6">${all.length}</div><div class="gl">hallazgos totales asamblea</div></div>
+        <div class="global-item"><div class="gn" style="color:${Math.round((totalShipped/all.length)*100) > 10 ? '#2ecc71' : '#f39c12'}">${Math.round((totalShipped/all.length)*100)}%</div><div class="gl">cubierto (done + in-progress)</div></div>
+      </div>
+      ${ipArr.length ? `
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🔗 PRs abiertos (in-progress)</div>
+          ${ipArr.map(f => `<div class="kv" style="border-bottom:0;padding:4px 0">
+            <span><span style="background:${SEV_COLOR[f.severity]};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">${f.id}</span> ${f.title.slice(0,60)}</span>
+            <span class="v">${f.pr_url ? `<a href="${f.pr_url}" target="_blank" style="color:#5dade2">↗ PR</a>` : '—'}</span>
+          </div>`).join('')}
+        </div>
+      ` : ''}
+    </div>
+
     <div class="stats">
       <div class="stat"><div class="num">${m.files.frontend_ts + m.files.rust_tauri + m.files.python_backend + m.files.llama_helper}</div><div class="lbl">Archivos de código</div></div>
       <div class="stat ok"><div class="num">${m.tests.rust_markers + m.tests.python_funcs + m.tests.frontend_specs}</div><div class="lbl">Tests totales</div></div>
