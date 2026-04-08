@@ -45,3 +45,37 @@ Append-only. Cada entrada documenta un ciclo de `/improve` o `/improve-pr` exito
 - **Cómo se detectó:** durante el primer baseline run de `cargo test --workspace`, falló con rc=101 en 6m34s debido a E0063 missing fields. NO estaba en la asamblea original — descubierto al ejecutar tests reales por primera vez en este fork.
 - **Estado:** in-progress (PR #3 abierto)
 - **Notas:** Sin este fix, NINGÚN ciclo de `/improve-pr` puede validar tests Rust. Bloquea las prioridades del proyecto (zero data loss + transcripción rápida) porque cualquier mejora en pipeline de audio necesita correr cargo test antes de mergear. Es el fix de mayor prioridad de toda la asamblea hasta que se mergee.
+
+### 2026-04-07 — Iter #3 — PY-003
+
+- **Experto:** 🐍 python_backend
+- **Título:** uvicorn con reload=True y host=0.0.0.0 hardcodeado
+- **Branch:** `improve/PY-003-uvicorn-env-config`
+- **PR:** https://github.com/ponchovillalobos/maity_desktop-1/pull/4
+- **Archivos:** `backend/app/main.py` (+18 -1)
+- **Impact/Effort:** 8/10 · 1/10 · prio 8.0
+- **Severity:** HIGH
+- **Phase:** v1.0
+- **Quality gates:** Python AST parse OK
+- **Consulta asamblea:** AUTOR=python_backend · 0 OBJETA · refuerza SEC-006 (mismo patrón en whisper)
+- **Estado:** in-progress
+- **Qué mejora para el usuario:** El backend ya no es accesible desde otros equipos en WiFi pública. Antes, en una cafetería, alguien podía mandar peticiones a tu API de transcripción y leer tus reuniones. Ahora solo localhost por defecto. Opt-in con MAITY_HOST=0.0.0.0 para casos especiales.
+
+### 2026-04-07 — Iter #3.5 — Test run real con QA-008 aplicado (descubrimiento masivo)
+
+Tras aplicar QA-008 (cherry-pick a assembly/bootstrap), `cargo test --workspace` corrió por primera vez en este fork:
+
+**74 tests pasan / 3 fallan / 1 ignored** (de 78 totales)
+
+Fallos descubren 3 hallazgos nuevos:
+
+#### RUST-008 (HIGH)
+`test_calculate_buffer_timeout_bluetooth` falla. Lógica de cálculo de buffer timeout para BT incorrecta. Relacionado con BLUETOOTH_PLAYBACK_NOTICE.md.
+
+#### RUST-009 (CRITICAL — afecta zero data loss) ⚠️
+`test_checkpoint_creation` falla con `assertion left=1 right=2`. Incremental saver crea 1 checkpoint cuando deberia crear 2 con 60s de audio. **Esto compromete la promesa de zero data loss**: si la app crashea entre checkpoints, se pierde más audio del que las cuentas decían. Es ahora el #1 de toda la asamblea.
+
+#### LLM-008 (MEDIUM)
+`test_get_builtin_template` falla con mismatch "Standup Diario" vs "Daily Standup". Template fue traducido al español pero el test sigue esperando inglés. Decidir politica i18n.
+
+**Qué mejora para el usuario:** Pasamos de "los tests no compilaban — estábamos a ciegas" a "tenemos 74 tests verdes y sabemos exactamente cuáles 3 fallan y por qué". El #2 (RUST-009) es un bug real que descubre que la promesa zero data loss no se cumple al 100% — y ahora podemos arreglarlo en lugar de descubrirlo cuando un usuario empresarial pierda una reunión crítica.
