@@ -151,7 +151,9 @@ rand = "0.8.5"
 rubato = "0.15.0"
 ringbuf = "0.4.8"
 
-ffmpeg-sidecar = { git = "https://github.com/nathanbabcock/ffmpeg-sidecar", branch = "main" }
+# RUST-003: pin to specific rev to avoid silent supply-chain drift from branch=main.
+# Update this rev periodically and after security advisories.
+ffmpeg-sidecar = { git = "https://github.com/nathanbabcock/ffmpeg-sidecar", rev = "33272cc8203d85983f805b23892c889c2308b816" }
 
 sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite", "chrono"] }
 
