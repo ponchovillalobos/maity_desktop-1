@@ -19,3 +19,5 @@ Histórico de métricas por iteración. Línea por commit/ciclo.
 
 | Fecha | Iter | EXP-ID | Tests Rust | Tests TS | Clippy W | Done/Total | Notas |
 |---|---|---|---|---|---|---|---|
+| 2026-04-07 | 0 | (baseline) | 84 | 0 | TBD | 0/83 | cargo check rc=0 (5m28s), npm install rc=0 (3m, 697 pkg), 126 unwrap, 442 console.log, 47 any |
+| 2026-04-07 | 1 | LEG-006 | 84 | 0 | TBD | 0/83 (1 in-progress) | PR #2 abierto, esperando merge |
