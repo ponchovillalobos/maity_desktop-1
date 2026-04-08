@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -134,4 +136,18 @@ async def shutdown_event():
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
-    uvicorn.run("main:app", host="0.0.0.0", port=5167, reload=True)
+
+    # PY-003: leer host/port/reload de variables de entorno con defaults seguros.
+    # Defaults: bind a 127.0.0.1 (no exponer LAN), reload deshabilitado (solo dev opt-in).
+    # Override con env vars: MAITY_HOST, MAITY_PORT, MAITY_RELOAD=1.
+    host = os.getenv("MAITY_HOST", "127.0.0.1")
+    port = int(os.getenv("MAITY_PORT", "5167"))
+    reload_enabled = os.getenv("MAITY_RELOAD", "0") == "1"
+
+    if host == "0.0.0.0":
+        logger.warning(
+            "MAITY_HOST=0.0.0.0 — backend expuesto a la LAN. "
+            "Asegurate de tener un firewall o bind a 127.0.0.1."
+        )
+
+    uvicorn.run("main:app", host=host, port=port, reload=reload_enabled)
