@@ -4,20 +4,27 @@ Maity Desktop — Portal de Asamblea de Expertos + Dashboard de Mejora Continua
 Lanzar:
     python scripts/portal.py
     # o
-    uvicorn scripts.portal:app --port 8770 --reload
+    uvicorn scripts.portal:app --host 127.0.0.1 --port 8770 --reload
 
 Endpoints:
-    /              Portal unificado (tabs)
-    /assembly      Asamblea: cards, scatter Impact/Effort, tabs por experto, roadmap
-    /dashboard     Métricas: tests, warnings, builds, iteración actual
-    /memory        Render de memory/*.md (improvement log, failed attempts, metrics, state)
-    /api/findings  JSON crudo del assembly_data.json
-    /health        OK
+    /                  Portal SPA con sidebar (asamblea + roadmap + dashboard + consulta + memoria)
+    /api/findings      JSON crudo del assembly_data.json
+    /api/metrics       Métricas live del repo (counts, tests, unwraps, builds)
+    /api/consult/{id}  Consulta a la asamblea sobre un hallazgo (devuelve relacionados/conflictos)
+    /health            OK
 """
 from __future__ import annotations
 
 import json
+import os
+import re
+import subprocess
+import tempfile
+import time
 from pathlib import Path
+from typing import Any
+
+TMP = Path(tempfile.gettempdir())
 
 import markdown as md
 from fastapi import FastAPI, HTTPException
@@ -27,7 +34,32 @@ ROOT = Path(__file__).resolve().parent.parent
 ASSEMBLY_FILE = ROOT / "scripts" / "assembly_data.json"
 MEMORY_DIR = ROOT / "memory"
 
-app = FastAPI(title="Maity Desktop — Portal", version="1.0")
+app = FastAPI(title="Maity Desktop — Portal", version="2.0")
+
+SEVERITY_COLORS = {
+    "critical": "#e74c3c",
+    "high": "#e67e22",
+    "medium": "#f1c40f",
+    "low": "#95a5a6",
+}
+SEVERITY_LABEL = {
+    "critical": "CRÍTICO",
+    "high": "ALTO",
+    "medium": "MEDIO",
+    "low": "BAJO",
+}
+
+# Cross-cutting expert relationships (who tends to conflict with whom)
+EXPERT_TENSIONS = {
+    "security": ["ux_desktop", "business"],
+    "privacy_legal": ["business", "ux_desktop"],
+    "ux_desktop": ["security", "privacy_legal"],
+    "business": ["security", "privacy_legal", "qa_testing"],
+    "performance": ["qa_testing", "ai_llm"],
+    "qa_testing": ["business", "performance"],
+    "rust_tauri": ["performance"],
+    "devops_ci": ["business"],
+}
 
 
 # ──────────────────────────── helpers ──────────────────────────── #
@@ -38,18 +70,176 @@ def load_assembly() -> dict:
         return json.load(f)
 
 
-SEVERITY_COLORS = {
-    "critical": "#e74c3c",
-    "high": "#e67e22",
-    "medium": "#f1c40f",
-    "low": "#95a5a6",
-}
+def all_findings_flat(data: dict) -> list[dict]:
+    out = []
+    for exp_key, exp in data["experts"].items():
+        for f in exp["findings"]:
+            out.append({**f, "expert": exp_key, "expert_name": exp["name"], "expert_icon": exp["icon"], "expert_color": exp["color"]})
+    return out
+
+
+_metrics_cache: dict[str, Any] = {"ts": 0, "data": None}
+
+
+def collect_metrics(force: bool = False) -> dict:
+    """Live metrics from the repo. Cached 60s."""
+    if not force and _metrics_cache["data"] and time.time() - _metrics_cache["ts"] < 60:
+        return _metrics_cache["data"]
+
+    def count_files(root: Path, *exts: str) -> int:
+        if not root.exists():
+            return 0
+        n = 0
+        for ext in exts:
+            n += sum(1 for _ in root.rglob(f"*{ext}"))
+        return n
+
+    def grep_count(root: Path, pattern: str, *exts: str) -> int:
+        if not root.exists():
+            return 0
+        n = 0
+        rx = re.compile(pattern)
+        for ext in exts:
+            for f in root.rglob(f"*{ext}"):
+                try:
+                    text = f.read_text(encoding="utf-8", errors="ignore")
+                    n += len(rx.findall(text))
+                except Exception:
+                    pass
+        return n
+
+    fe_src = ROOT / "frontend" / "src"
+    rust_src = ROOT / "frontend" / "src-tauri" / "src"
+    py_src = ROOT / "backend" / "app"
+    llama_src = ROOT / "llama-helper" / "src"
+
+    metrics = {
+        "files": {
+            "frontend_ts": count_files(fe_src, ".ts", ".tsx"),
+            "rust_tauri": count_files(rust_src, ".rs"),
+            "python_backend": count_files(py_src, ".py"),
+            "llama_helper": count_files(llama_src, ".rs"),
+        },
+        "tests": {
+            "rust_markers": grep_count(rust_src, r"#\[(test|tokio::test)\]", ".rs") + grep_count(llama_src, r"#\[(test|tokio::test)\]", ".rs"),
+            "python_funcs": grep_count(ROOT / "backend" / "tests", r"def test_", ".py"),
+            "frontend_specs": count_files(fe_src, ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"),
+        },
+        "quality": {
+            "unwrap_calls": grep_count(rust_src, r"\.unwrap\(\)", ".rs"),
+            "console_log": grep_count(fe_src, r"console\.(log|debug|info)", ".ts", ".tsx"),
+            "ts_any": grep_count(fe_src, r": any\b", ".ts", ".tsx"),
+            "todo_fixme": grep_count(fe_src, r"TODO|FIXME", ".ts", ".tsx") + grep_count(rust_src, r"TODO|FIXME", ".rs") + grep_count(py_src, r"TODO|FIXME", ".py"),
+        },
+        "build": {
+            "target_exists": (ROOT / "frontend" / "src-tauri" / "target").exists() or (ROOT / "target").exists(),
+            "node_modules_exists": (ROOT / "frontend" / "node_modules").exists(),
+            "cargo_lock": (ROOT / "Cargo.lock").exists(),
+        },
+        "git": {},
+    }
+
+    # Git info
+    try:
+        branch = subprocess.run(["git", "branch", "--show-current"], cwd=ROOT, capture_output=True, text=True, timeout=3)
+        commit = subprocess.run(["git", "log", "-1", "--format=%h %s"], cwd=ROOT, capture_output=True, text=True, timeout=3)
+        ahead = subprocess.run(["git", "rev-list", "--count", "HEAD", "^main"], cwd=ROOT, capture_output=True, text=True, timeout=3)
+        metrics["git"] = {
+            "branch": branch.stdout.strip(),
+            "last_commit": commit.stdout.strip(),
+            "ahead_of_main": ahead.stdout.strip() or "0",
+        }
+    except Exception:
+        pass
+
+    # Background build status (poll log files written by background tasks)
+    cargo_log = TMP / "cargo_check.log"
+    npm_log = TMP / "npm_install.log"
+    metrics["build"]["cargo_status"] = _read_status(cargo_log, "CARGO_DONE")
+    metrics["build"]["npm_status"] = _read_status(npm_log, "NPM_DONE")
+
+    _metrics_cache["data"] = metrics
+    _metrics_cache["ts"] = time.time()
+    return metrics
+
+
+def _read_status(log: Path, marker: str) -> dict:
+    if not log.exists():
+        return {"state": "not_started"}
+    try:
+        text = log.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return {"state": "unknown"}
+    if marker in text:
+        m = re.search(rf"{marker} rc=(\d+)", text)
+        rc = int(m.group(1)) if m else -1
+        return {"state": "ok" if rc == 0 else "failed", "rc": rc, "log_tail": text[-800:]}
+    return {"state": "running", "log_tail": text[-800:]}
+
+
+def consult_finding(finding_id: str) -> dict:
+    """Para un EXP-ID, devuelve: el finding, expertos relacionados, conflictos potenciales."""
+    data = load_assembly()
+    flat = all_findings_flat(data)
+    target = next((f for f in flat if f["id"] == finding_id), None)
+    if not target:
+        raise HTTPException(404, f"Finding {finding_id} no encontrado")
+
+    expert_key = target["expert"]
+    target_words = set(re.findall(r"[a-záéíóúñ]+", (target["title"] + " " + target["description"]).lower()))
+    target_words = {w for w in target_words if len(w) > 4}
+
+    # Related: same words / same files referenced
+    related = []
+    for f in flat:
+        if f["id"] == finding_id:
+            continue
+        words = set(re.findall(r"[a-záéíóúñ]+", (f["title"] + " " + f["description"]).lower()))
+        overlap = len(target_words & words)
+        if overlap >= 3:
+            related.append({**f, "overlap_score": overlap})
+    related.sort(key=lambda x: -x["overlap_score"])
+    related = related[:6]
+
+    # Conflicts: experts with structural tension
+    tension_experts = EXPERT_TENSIONS.get(expert_key, [])
+    conflicts = [f for f in flat if f["expert"] in tension_experts and f != target][:6]
+
+    # "Votes" by all experts: simulated based on whether they have related findings or conflict tension
+    votes = {}
+    for ek, exp in data["experts"].items():
+        if ek == expert_key:
+            votes[ek] = {"verdict": "AUTOR", "reason": "Este experto propuso el hallazgo."}
+            continue
+        has_related = any(r["expert"] == ek for r in related)
+        in_tension = ek in tension_experts
+        if has_related and in_tension:
+            verdict = "PRECAUCIÓN"
+            reason = f"{exp['name']} tiene hallazgos relacionados pero su perspectiva puede entrar en conflicto con esta solución."
+        elif has_related:
+            verdict = "APOYA"
+            reason = f"{exp['name']} tiene hallazgos relacionados y se beneficia del cambio."
+        elif in_tension:
+            verdict = "OBJETA"
+            reason = f"La solución podría afectar negativamente la perspectiva de {exp['name']} (ver tensiones cruzadas)."
+        else:
+            verdict = "NEUTRAL"
+            reason = f"{exp['name']} no tiene posición directa sobre este hallazgo."
+        votes[ek] = {"verdict": verdict, "reason": reason, "icon": exp["icon"], "name": exp["name"]}
+
+    return {
+        "target": target,
+        "related": related,
+        "conflicts": conflicts,
+        "votes": votes,
+        "tension_experts": tension_experts,
+    }
 
 
 # ──────────────────────────── routes ──────────────────────────── #
 @app.get("/health")
 async def health():
-    return {"ok": True, "assembly": ASSEMBLY_FILE.exists()}
+    return {"ok": True, "assembly": ASSEMBLY_FILE.exists(), "version": "2.0"}
 
 
 @app.get("/api/findings")
@@ -57,301 +247,587 @@ async def api_findings():
     return JSONResponse(load_assembly())
 
 
-@app.get("/", response_class=HTMLResponse)
-async def portal():
-    return f"""<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<title>Maity Desktop — Portal</title>
-<style>
-  :root {{ --bg:#0f1115; --fg:#e6e9ef; --accent:#27ae60; --muted:#7f8c8d; --card:#1a1d24; }}
-  * {{ box-sizing:border-box; }}
-  body {{ margin:0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }}
-  header {{ padding:14px 22px; background:#161922; border-bottom:1px solid #2a2f3a; display:flex; align-items:center; gap:18px; }}
-  header h1 {{ margin:0; font-size:18px; font-weight:600; }}
-  header .tag {{ font-size:11px; padding:2px 8px; border-radius:10px; background:var(--accent); color:#fff; }}
-  nav button {{ background:transparent; border:1px solid #2a2f3a; color:var(--fg); padding:6px 14px; margin-right:6px; border-radius:6px; cursor:pointer; font-size:13px; }}
-  nav button:hover, nav button.active {{ background:#2a2f3a; }}
-  iframe {{ width:100%; height:calc(100vh - 58px); border:0; background:var(--bg); }}
-</style>
-</head>
-<body>
-<header>
-  <h1>🎙️ Maity Desktop</h1>
-  <span class="tag">Asamblea v1.0</span>
-  <nav>
-    <button onclick="load('/assembly', this)" class="active">Asamblea</button>
-    <button onclick="load('/dashboard', this)">Dashboard</button>
-    <button onclick="load('/memory', this)">Memoria</button>
-  </nav>
-</header>
-<iframe id="frame" src="/assembly"></iframe>
-<script>
-function load(url, btn) {{
-  document.getElementById('frame').src = url;
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-}}
-</script>
-</body>
-</html>"""
+@app.get("/api/metrics")
+async def api_metrics():
+    return JSONResponse(collect_metrics())
 
 
-@app.get("/assembly", response_class=HTMLResponse)
-async def assembly():
-    data = load_assembly()
-    experts = data["experts"]
-    project = data["project"]
-
-    all_findings = []
-    for exp_key, exp in experts.items():
-        for f in exp["findings"]:
-            all_findings.append({**f, "expert": exp_key, "expert_name": exp["name"], "icon": exp["icon"]})
-
-    total = len(all_findings)
-    done = sum(1 for f in all_findings if f["status"] == "done")
-    pending = total - done
-    critical = sum(1 for f in all_findings if f["severity"] == "critical")
-    progress_pct = int((done / total) * 100) if total else 0
-
-    # Tabs por experto
-    tabs_html = ""
-    panels_html = ""
-    for i, (key, exp) in enumerate(experts.items()):
-        active = " active" if i == 0 else ""
-        tabs_html += f'<button class="tab{active}" onclick="showTab(\'{key}\', this)">{exp["icon"]} {exp["name"]} <span class="badge">{len(exp["findings"])}</span></button>\n'
-        rows = ""
-        for f in sorted(exp["findings"], key=lambda x: -(x["impact"] / max(x["effort"], 1))):
-            sev_color = SEVERITY_COLORS.get(f["severity"], "#95a5a6")
-            status_icon = "✅" if f["status"] == "done" else "⏳"
-            rows += f"""
-            <tr>
-              <td><code>{f['id']}</code></td>
-              <td>{status_icon} {f['title']}</td>
-              <td><span class="sev" style="background:{sev_color}">{f['severity']}</span></td>
-              <td>{f['impact']}</td>
-              <td>{f['effort']}</td>
-              <td>{f['phase']}</td>
-            </tr>
-            <tr class="detail"><td colspan="6">
-              <p><strong>Problema:</strong> {f['description']}</p>
-              <p><strong>Solución:</strong> {f['recommendation']}</p>
-            </td></tr>"""
-        panels_html += f"""
-        <div class="panel" id="panel-{key}" style="display:{'block' if i == 0 else 'none'}">
-          <p class="summary">{exp.get('summary', '')}</p>
-          <table>
-            <thead><tr><th>ID</th><th>Título</th><th>Sev</th><th>I</th><th>E</th><th>Phase</th></tr></thead>
-            <tbody>{rows}</tbody>
-          </table>
-        </div>"""
-
-    # Roadmap
-    roadmap = data.get("roadmap", {})
-    roadmap_html = ""
-    for phase_key in ("v1.0", "v2.0", "v3.0"):
-        if phase_key not in roadmap:
-            continue
-        phase = roadmap[phase_key]
-        items = phase.get("items", [])
-        items_html = ""
-        for fid in items:
-            f = next((x for x in all_findings if x["id"] == fid), None)
-            if not f:
-                continue
-            sev_color = SEVERITY_COLORS.get(f["severity"], "#95a5a6")
-            done_class = " done" if f["status"] == "done" else ""
-            items_html += f'<li class="rm-item{done_class}"><span class="rm-id">{f["id"]}</span> {f["title"]} <span class="rm-sev" style="background:{sev_color}"></span></li>'
-        roadmap_html += f"""
-        <div class="rm-col">
-          <h3>{phase_key} <small>{phase.get('label', '')}</small></h3>
-          <ul>{items_html}</ul>
-        </div>"""
-
-    # Scatter chart data
-    scatter_points = json.dumps([
-        {"x": f["effort"], "y": f["impact"], "id": f["id"], "title": f["title"][:50],
-         "color": SEVERITY_COLORS.get(f["severity"], "#95a5a6")}
-        for f in all_findings
-    ])
-
-    return HTMLResponse(f"""<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<title>Asamblea — {project['name']}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
-  :root {{ --bg:#0f1115; --fg:#e6e9ef; --card:#1a1d24; --muted:#7f8c8d; --accent:#27ae60; --border:#2a2f3a; }}
-  * {{ box-sizing:border-box; }}
-  body {{ margin:0; padding:20px; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }}
-  h2, h3 {{ margin:0 0 8px; font-weight:600; }}
-  .grid {{ display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-bottom:18px; }}
-  .card {{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; }}
-  .card .num {{ font-size:32px; font-weight:700; }}
-  .card .lbl {{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }}
-  .progress {{ background:var(--card); border:1px solid var(--border); border-radius:8px; height:24px; overflow:hidden; margin-bottom:18px; position:relative; }}
-  .progress-bar {{ background:linear-gradient(90deg,#27ae60,#2ecc71); height:100%; transition:width 0.3s; }}
-  .progress-text {{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; }}
-  .uvp {{ background:var(--card); border-left:3px solid var(--accent); padding:12px 16px; border-radius:6px; margin-bottom:18px; font-size:13px; color:#bdc3c7; }}
-  .tabs {{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }}
-  .tab {{ background:transparent; border:1px solid var(--border); color:var(--fg); padding:8px 14px; border-radius:6px; cursor:pointer; font-size:13px; }}
-  .tab:hover {{ background:#2a2f3a; }}
-  .tab.active {{ background:var(--accent); border-color:var(--accent); color:#fff; }}
-  .tab .badge {{ background:rgba(255,255,255,0.15); padding:1px 6px; border-radius:10px; font-size:11px; margin-left:4px; }}
-  .panel {{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; margin-bottom:18px; }}
-  .summary {{ color:var(--muted); margin:0 0 14px; font-size:13px; font-style:italic; }}
-  table {{ width:100%; border-collapse:collapse; font-size:13px; }}
-  th {{ text-align:left; padding:8px; border-bottom:1px solid var(--border); color:var(--muted); font-weight:500; font-size:11px; text-transform:uppercase; }}
-  td {{ padding:10px 8px; border-bottom:1px solid var(--border); }}
-  tr.detail td {{ padding:8px 16px 16px; color:#bdc3c7; font-size:12px; background:rgba(255,255,255,0.02); }}
-  tr.detail p {{ margin:4px 0; }}
-  .sev {{ display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; color:#fff; text-transform:uppercase; }}
-  code {{ background:#0a0c10; padding:2px 6px; border-radius:4px; font-size:11px; color:#3498db; }}
-  .roadmap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-top:18px; }}
-  .rm-col {{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; }}
-  .rm-col h3 small {{ color:var(--muted); font-size:11px; font-weight:400; display:block; margin-top:2px; }}
-  .rm-col ul {{ list-style:none; padding:0; margin:12px 0 0; }}
-  .rm-item {{ padding:8px 0; border-bottom:1px solid var(--border); font-size:12px; display:flex; align-items:center; gap:8px; }}
-  .rm-item.done {{ opacity:0.5; text-decoration:line-through; }}
-  .rm-id {{ background:#0a0c10; padding:2px 6px; border-radius:3px; font-size:10px; color:#3498db; font-family:monospace; }}
-  .rm-sev {{ width:8px; height:8px; border-radius:50%; margin-left:auto; }}
-  .chart-wrap {{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; margin-bottom:18px; height:380px; }}
-</style>
-</head>
-<body>
-
-<h2>🎙️ Asamblea de Expertos — {project['name']} v{project['version']}</h2>
-<div class="uvp">{project.get('unique_value', '')}</div>
-
-<div class="grid">
-  <div class="card"><div class="num">{total}</div><div class="lbl">Total Hallazgos</div></div>
-  <div class="card"><div class="num" style="color:#2ecc71">{done}</div><div class="lbl">Completados</div></div>
-  <div class="card"><div class="num" style="color:#f39c12">{pending}</div><div class="lbl">Pendientes</div></div>
-  <div class="card"><div class="num" style="color:#e74c3c">{critical}</div><div class="lbl">Críticos</div></div>
-</div>
-
-<div class="progress">
-  <div class="progress-bar" style="width:{progress_pct}%"></div>
-  <div class="progress-text">{progress_pct}% completado ({done}/{total})</div>
-</div>
-
-<div class="chart-wrap">
-  <h3>📊 Impact vs Effort — priorizar los del cuadrante superior izquierdo</h3>
-  <canvas id="scatter"></canvas>
-</div>
-
-<h3>👥 Expertos</h3>
-<div class="tabs">{tabs_html}</div>
-{panels_html}
-
-<h3>🗺️ Roadmap</h3>
-<div class="roadmap">{roadmap_html}</div>
-
-<script>
-function showTab(key, btn) {{
-  document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
-  document.getElementById('panel-' + key).style.display = 'block';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-}}
-
-const points = {scatter_points};
-new Chart(document.getElementById('scatter'), {{
-  type: 'scatter',
-  data: {{
-    datasets: [{{
-      label: 'Hallazgos',
-      data: points,
-      backgroundColor: points.map(p => p.color),
-      pointRadius: 7,
-      pointHoverRadius: 10,
-    }}]
-  }},
-  options: {{
-    responsive: true, maintainAspectRatio: false,
-    scales: {{
-      x: {{ title: {{ display:true, text:'Effort (1=fácil, 10=difícil)', color:'#bdc3c7' }}, min:0, max:11, ticks:{{color:'#7f8c8d'}}, grid:{{color:'#2a2f3a'}} }},
-      y: {{ title: {{ display:true, text:'Impact (1=bajo, 10=alto)', color:'#bdc3c7' }}, min:0, max:11, ticks:{{color:'#7f8c8d'}}, grid:{{color:'#2a2f3a'}} }}
-    }},
-    plugins: {{
-      legend: {{ display:false }},
-      tooltip: {{ callbacks: {{ label: ctx => ctx.raw.id + ': ' + ctx.raw.title }} }}
-    }}
-  }}
-}});
-</script>
-</body>
-</html>""")
+@app.get("/api/consult/{finding_id}")
+async def api_consult(finding_id: str):
+    return JSONResponse(consult_finding(finding_id.upper()))
 
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard():
-    metrics_file = MEMORY_DIR / "METRICS_HISTORY.md"
-    log_file = MEMORY_DIR / "IMPROVEMENT_LOG.md"
-    metrics_md = metrics_file.read_text(encoding="utf-8") if metrics_file.exists() else "_no metrics yet_"
-    log_md = log_file.read_text(encoding="utf-8") if log_file.exists() else "_no improvements yet_"
-
-    data = load_assembly()
-    iterations = data.get("iterations", 0)
-    commits = data.get("commits", 0)
-    cycle = data.get("evaluation_cycle", 1)
-
-    return HTMLResponse(f"""<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><title>Dashboard</title>
-<style>
-  body {{ margin:0; padding:20px; font-family:-apple-system,Segoe UI,sans-serif; background:#0f1115; color:#e6e9ef; }}
-  h2, h3 {{ margin:0 0 12px; }}
-  .grid {{ display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:18px; }}
-  .card {{ background:#1a1d24; border:1px solid #2a2f3a; border-radius:10px; padding:18px; }}
-  .num {{ font-size:32px; font-weight:700; }}
-  .lbl {{ font-size:12px; color:#7f8c8d; text-transform:uppercase; }}
-  .panel {{ background:#1a1d24; border:1px solid #2a2f3a; border-radius:10px; padding:18px; margin-bottom:14px; }}
-  pre {{ background:#0a0c10; padding:14px; border-radius:6px; overflow:auto; font-size:12px; }}
-</style></head>
-<body>
-<h2>📈 Dashboard de Mejora Continua</h2>
-<div class="grid">
-  <div class="card"><div class="num">{cycle}</div><div class="lbl">Ciclo de evaluación</div></div>
-  <div class="card"><div class="num">{iterations}</div><div class="lbl">Iteraciones</div></div>
-  <div class="card"><div class="num">{commits}</div><div class="lbl">Commits asamblea</div></div>
-</div>
-<div class="panel"><h3>📊 Métricas históricas</h3>{md.markdown(metrics_md, extensions=['tables'])}</div>
-<div class="panel"><h3>📝 Log de mejoras</h3>{md.markdown(log_md, extensions=['tables'])}</div>
-</body></html>""")
-
-
-@app.get("/memory", response_class=HTMLResponse)
-async def memory_view():
+@app.get("/api/memory")
+async def api_memory():
     files = ["IMPROVEMENT_LOG.md", "FAILED_ATTEMPTS.md", "METRICS_HISTORY.md", "ANALYSIS_STATE.md"]
-    sections = ""
+    out = {}
     for fname in files:
         fpath = MEMORY_DIR / fname
-        body = fpath.read_text(encoding="utf-8") if fpath.exists() else "_(missing)_"
-        sections += f"""
-        <div class="panel">
-          <h3>📄 {fname}</h3>
-          {md.markdown(body, extensions=['tables', 'fenced_code'])}
-        </div>"""
+        if fpath.exists():
+            out[fname] = fpath.read_text(encoding="utf-8")
+        else:
+            out[fname] = "_(missing)_"
+    return JSONResponse(out)
 
-    return HTMLResponse(f"""<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><title>Memory</title>
+
+# ──────────────────────────── HTML ──────────────────────────── #
+INDEX_HTML = r"""<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maity Desktop — Portal de Asamblea</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
 <style>
-  body {{ margin:0; padding:20px; font-family:-apple-system,Segoe UI,sans-serif; background:#0f1115; color:#e6e9ef; }}
-  h2, h3 {{ margin:0 0 12px; }}
-  .panel {{ background:#1a1d24; border:1px solid #2a2f3a; border-radius:10px; padding:18px; margin-bottom:14px; }}
-  pre, code {{ background:#0a0c10; padding:6px; border-radius:4px; font-size:12px; }}
-  table {{ border-collapse:collapse; }}
-  th, td {{ border:1px solid #2a2f3a; padding:6px 10px; }}
-</style></head>
+:root {
+  --bg:#0b0d12; --bg2:#11141b; --card:#161a23; --card2:#1c2130;
+  --fg:#e8ecf3; --muted:#7e8694; --border:#252b3a; --accent:#27ae60;
+  --critical:#e74c3c; --high:#e67e22; --medium:#f1c40f; --low:#95a5a6;
+  --link:#3498db;
+}
+* { box-sizing:border-box; }
+html,body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--fg);
+  font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:14px; }
+.app { display:grid; grid-template-columns:240px 1fr; height:100vh; }
+
+/* Sidebar */
+aside { background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; }
+aside .brand { padding:18px 20px; border-bottom:1px solid var(--border); }
+aside .brand h1 { margin:0; font-size:16px; font-weight:700; }
+aside .brand p { margin:2px 0 0; font-size:11px; color:var(--muted); }
+aside nav { padding:12px 0; flex:1; overflow:auto; }
+aside nav button { display:block; width:100%; text-align:left; background:transparent; border:0;
+  color:var(--fg); padding:10px 20px; font-size:13px; cursor:pointer; border-left:3px solid transparent; }
+aside nav button:hover { background:rgba(255,255,255,0.04); }
+aside nav button.active { background:rgba(39,174,96,0.12); border-left-color:var(--accent); color:#fff; }
+aside nav .sep { height:1px; background:var(--border); margin:8px 0; }
+aside .footer { padding:14px 20px; font-size:11px; color:var(--muted); border-top:1px solid var(--border); }
+
+/* Main */
+main { overflow:auto; padding:24px 32px; }
+main h2 { margin:0 0 6px; font-size:22px; font-weight:700; }
+main h3 { margin:24px 0 12px; font-size:15px; font-weight:600; color:#bdc3c7; text-transform:uppercase; letter-spacing:0.5px; }
+main p.lead { margin:0 0 18px; color:var(--muted); font-size:13px; }
+
+/* Cards grid */
+.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+.stat { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
+.stat .num { font-size:30px; font-weight:700; line-height:1; }
+.stat .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:6px; }
+.stat.crit .num { color:var(--critical); }
+.stat.warn .num { color:var(--high); }
+.stat.ok .num { color:#2ecc71; }
+
+.progress { background:var(--card); border:1px solid var(--border); border-radius:8px;
+  height:28px; overflow:hidden; margin-bottom:24px; position:relative; }
+.progress-bar { background:linear-gradient(90deg,#27ae60,#2ecc71); height:100%; transition:width 0.4s; }
+.progress-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:600; }
+
+/* Filter bar */
+.filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; align-items:center; }
+.filters input[type=text] { background:var(--card); border:1px solid var(--border); color:var(--fg);
+  padding:8px 12px; border-radius:8px; font-size:13px; min-width:200px; }
+.chip { background:var(--card); border:1px solid var(--border); color:var(--fg); padding:6px 12px;
+  border-radius:20px; font-size:12px; cursor:pointer; }
+.chip.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.chip:hover { background:#252b3a; }
+.chip.active:hover { background:#229954; }
+
+/* Finding cards */
+.findings { display:grid; gap:14px; }
+.finding {
+  background:var(--card); border:1px solid var(--border); border-radius:12px;
+  display:grid; grid-template-columns:6px 1fr; overflow:hidden;
+}
+.finding .stripe { width:6px; }
+.finding .body { padding:18px 22px; }
+.finding header { display:flex; align-items:flex-start; gap:12px; margin-bottom:10px; flex-wrap:wrap; }
+.finding header .id { font-family:Consolas,Monaco,monospace; background:rgba(52,152,219,0.15);
+  color:#5dade2; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+.finding header .title { flex:1; font-size:16px; font-weight:600; min-width:200px; }
+.finding header .badges { display:flex; gap:6px; flex-wrap:wrap; }
+.badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:10px;
+  font-weight:700; text-transform:uppercase; letter-spacing:0.3px; }
+.badge.sev { color:#fff; }
+.badge.expert { background:rgba(255,255,255,0.06); border:1px solid var(--border); color:#bdc3c7; }
+.badge.phase { background:rgba(46,204,113,0.15); color:#2ecc71; border:1px solid rgba(46,204,113,0.3); }
+.badge.status-pending { background:rgba(241,196,15,0.15); color:#f1c40f; border:1px solid rgba(241,196,15,0.3); }
+.badge.status-done { background:rgba(46,204,113,0.2); color:#2ecc71; border:1px solid rgba(46,204,113,0.4); }
+
+.finding .section { margin:10px 0; }
+.finding .section .lbl { font-size:10px; color:var(--muted); text-transform:uppercase;
+  letter-spacing:0.5px; font-weight:700; margin-bottom:4px; }
+.finding .section .txt { font-size:13px; line-height:1.55; color:#d8dde6; }
+.finding .meta { display:flex; gap:18px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border);
+  flex-wrap:wrap; align-items:center; }
+.bar { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+.bar .track { width:80px; height:6px; background:var(--bg); border-radius:3px; overflow:hidden; }
+.bar .fill { height:100%; }
+.bar.impact .fill { background:#3498db; }
+.bar.effort .fill { background:#e67e22; }
+.bar .val { font-weight:700; color:var(--fg); }
+.refs a { color:var(--link); text-decoration:none; font-size:11px; margin-right:10px; }
+.refs a:hover { text-decoration:underline; }
+.consult-btn { margin-left:auto; background:transparent; border:1px solid var(--accent); color:var(--accent);
+  padding:6px 14px; border-radius:6px; font-size:12px; cursor:pointer; }
+.consult-btn:hover { background:var(--accent); color:#fff; }
+
+/* Roadmap */
+.roadmap { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+.rm-col { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
+.rm-col h4 { margin:0 0 4px; font-size:14px; }
+.rm-col .sub { font-size:11px; color:var(--muted); margin-bottom:14px; }
+.rm-col .count { float:right; background:var(--bg); padding:2px 8px; border-radius:10px; font-size:11px; color:var(--muted); }
+.rm-item { padding:10px 0; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:flex-start; font-size:12px; }
+.rm-item:last-child { border-bottom:0; }
+.rm-item .id { font-family:Consolas,monospace; background:rgba(52,152,219,0.15); color:#5dade2;
+  padding:1px 6px; border-radius:3px; font-size:10px; min-width:64px; text-align:center; flex-shrink:0; }
+.rm-item .dot { width:8px; height:8px; border-radius:50%; margin-top:5px; flex-shrink:0; }
+.rm-item.done { opacity:0.45; text-decoration:line-through; }
+
+/* Modal Consult */
+.modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100;
+  align-items:flex-start; justify-content:center; padding:40px 20px; overflow:auto; }
+.modal.open { display:flex; }
+.modal-content { background:var(--bg2); border:1px solid var(--border); border-radius:14px;
+  max-width:900px; width:100%; padding:28px; max-height:none; }
+.modal-content h3 { margin:0 0 14px; font-size:18px; }
+.modal-content .close { float:right; background:transparent; border:0; color:var(--fg); font-size:24px; cursor:pointer; }
+.votes { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin:14px 0; }
+.vote { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:12px; }
+.vote .v { font-weight:700; font-size:11px; }
+.vote.APOYA { border-left:3px solid #2ecc71; }
+.vote.APOYA .v { color:#2ecc71; }
+.vote.OBJETA { border-left:3px solid #e74c3c; }
+.vote.OBJETA .v { color:#e74c3c; }
+.vote.PRECAUCIÓN { border-left:3px solid #e67e22; }
+.vote.PRECAUCIÓN .v { color:#e67e22; }
+.vote.NEUTRAL { border-left:3px solid var(--muted); }
+.vote.NEUTRAL .v { color:var(--muted); }
+.vote.AUTOR { border-left:3px solid #3498db; }
+.vote.AUTOR .v { color:#3498db; }
+
+/* Dashboard tiles */
+.dash-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.dash-tile { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
+.dash-tile h4 { margin:0 0 14px; font-size:13px; color:#bdc3c7; }
+.kv { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:12px; }
+.kv:last-child { border-bottom:0; }
+.kv .v { font-weight:700; font-family:Consolas,monospace; }
+.kv .v.crit { color:var(--critical); }
+.kv .v.warn { color:var(--high); }
+.kv .v.ok { color:#2ecc71; }
+.build-status { display:inline-block; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:600; }
+.build-status.ok { background:rgba(46,204,113,0.2); color:#2ecc71; }
+.build-status.failed { background:rgba(231,76,60,0.2); color:var(--critical); }
+.build-status.running { background:rgba(241,196,15,0.2); color:var(--medium); }
+.build-status.not_started { background:rgba(149,165,166,0.2); color:var(--muted); }
+
+#chart-wrap { background:var(--card); border:1px solid var(--border); border-radius:12px;
+  padding:18px; height:380px; margin-bottom:20px; }
+
+.memory-section { background:var(--card); border:1px solid var(--border); border-radius:12px;
+  padding:20px 24px; margin-bottom:14px; }
+.memory-section h4 { margin:0 0 12px; font-size:14px; color:#bdc3c7; }
+.memory-section table { width:100%; border-collapse:collapse; font-size:12px; }
+.memory-section th, .memory-section td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+.memory-section code { background:var(--bg); padding:2px 6px; border-radius:3px; font-size:11px; }
+.memory-section pre { background:var(--bg); padding:12px; border-radius:6px; overflow:auto; font-size:11px; }
+.refresh-btn { background:var(--card); border:1px solid var(--border); color:var(--fg);
+  padding:6px 14px; border-radius:6px; font-size:12px; cursor:pointer; }
+.refresh-btn:hover { background:var(--accent); border-color:var(--accent); }
+</style>
+</head>
 <body>
-<h2>🧠 Memoria del Sistema</h2>
-{sections}
-</body></html>""")
+<div class="app">
+  <aside>
+    <div class="brand">
+      <h1>🎙️ Maity Desktop</h1>
+      <p>Portal de Asamblea v2.0</p>
+    </div>
+    <nav>
+      <button class="active" data-view="assembly">📋 Asamblea</button>
+      <button data-view="roadmap">🗺️ Roadmap</button>
+      <button data-view="dashboard">📈 Dashboard</button>
+      <button data-view="memory">🧠 Memoria</button>
+      <div class="sep"></div>
+      <button data-view="experts">👥 Expertos</button>
+    </nav>
+    <div class="footer" id="footer-info">cargando…</div>
+  </aside>
+
+  <main id="main">
+    <div id="view"></div>
+  </main>
+</div>
+
+<div class="modal" id="modal" onclick="if(event.target.id==='modal')closeModal()">
+  <div class="modal-content" id="modal-content"></div>
+</div>
+
+<script>
+let DATA = null;
+let METRICS = null;
+let FILTERS = { search:'', expert:'all', severity:'all', phase:'all', status:'all' };
+
+async function loadAll() {
+  const [d, m] = await Promise.all([
+    fetch('/api/findings').then(r => r.json()),
+    fetch('/api/metrics').then(r => r.json()),
+  ]);
+  DATA = d; METRICS = m;
+  document.getElementById('footer-info').innerHTML =
+    `Branch: <b>${m.git.branch || '?'}</b><br>Commit: ${(m.git.last_commit||'').slice(0,40)}<br>v${d.project.version}`;
+  show('assembly');
+}
+
+function flat() {
+  const out = [];
+  for (const [k, exp] of Object.entries(DATA.experts)) {
+    for (const f of exp.findings) {
+      out.push({...f, expert:k, expert_name:exp.name, expert_icon:exp.icon, expert_color:exp.color});
+    }
+  }
+  return out;
+}
+
+function applyFilters(items) {
+  return items.filter(f => {
+    if (FILTERS.expert !== 'all' && f.expert !== FILTERS.expert) return false;
+    if (FILTERS.severity !== 'all' && f.severity !== FILTERS.severity) return false;
+    if (FILTERS.phase !== 'all' && f.phase !== FILTERS.phase) return false;
+    if (FILTERS.status !== 'all' && f.status !== FILTERS.status) return false;
+    if (FILTERS.search) {
+      const q = FILTERS.search.toLowerCase();
+      const hay = (f.id + ' ' + f.title + ' ' + f.description + ' ' + f.recommendation).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+const SEV_COLOR = {critical:'#e74c3c', high:'#e67e22', medium:'#f1c40f', low:'#95a5a6'};
+const SEV_LABEL = {critical:'CRÍTICO', high:'ALTO', medium:'MEDIO', low:'BAJO'};
+
+function findingCard(f) {
+  const refs = (f.references||[]).map(r => `<a href="${r}" target="_blank">↗ ${r.replace(/^https?:\/\//,'').slice(0,50)}</a>`).join('');
+  return `
+    <div class="finding">
+      <div class="stripe" style="background:${SEV_COLOR[f.severity]}"></div>
+      <div class="body">
+        <header>
+          <span class="id">${f.id}</span>
+          <div class="title">${f.title}</div>
+          <div class="badges">
+            <span class="badge sev" style="background:${SEV_COLOR[f.severity]}">${SEV_LABEL[f.severity]}</span>
+            <span class="badge expert">${f.expert_icon} ${f.expert_name}</span>
+            <span class="badge phase">${f.phase}</span>
+            <span class="badge status-${f.status}">${f.status === 'done' ? '✅ DONE' : '⏳ PENDING'}</span>
+          </div>
+        </header>
+        <div class="section">
+          <div class="lbl">🔍 Problema (descripción)</div>
+          <div class="txt">${f.description}</div>
+        </div>
+        <div class="section">
+          <div class="lbl">💡 Solución (recomendación)</div>
+          <div class="txt">${f.recommendation}</div>
+        </div>
+        <div class="section">
+          <div class="lbl">🎯 Razón / Por qué importa</div>
+          <div class="txt">Severidad <b>${SEV_LABEL[f.severity]}</b>. Impacto ${f.impact}/10, esfuerzo ${f.effort}/10 → ratio prioridad ${(f.impact/Math.max(f.effort,1)).toFixed(2)}. Asignado a fase <b>${f.phase}</b>.</div>
+        </div>
+        <div class="meta">
+          <div class="bar impact" title="Impact">
+            <span>Impact</span><div class="track"><div class="fill" style="width:${f.impact*10}%"></div></div><span class="val">${f.impact}/10</span>
+          </div>
+          <div class="bar effort" title="Effort">
+            <span>Effort</span><div class="track"><div class="fill" style="width:${f.effort*10}%"></div></div><span class="val">${f.effort}/10</span>
+          </div>
+          ${refs ? `<div class="refs">${refs}</div>` : ''}
+          <button class="consult-btn" onclick="consult('${f.id}')">🗣️ Consultar asamblea</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function show(view) {
+  document.querySelectorAll('aside nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  const target = document.getElementById('view');
+  if (view === 'assembly') target.innerHTML = renderAssembly();
+  else if (view === 'roadmap') target.innerHTML = renderRoadmap();
+  else if (view === 'dashboard') { target.innerHTML = renderDashboard(); renderChart(); }
+  else if (view === 'memory') renderMemory(target);
+  else if (view === 'experts') target.innerHTML = renderExperts();
+}
+
+function renderAssembly() {
+  const all = flat();
+  const total = all.length;
+  const done = all.filter(f => f.status === 'done').length;
+  const pending = total - done;
+  const critical = all.filter(f => f.severity === 'critical').length;
+  const pct = total ? Math.round(done/total*100) : 0;
+
+  const items = applyFilters(all).sort((a,b) => (b.impact/Math.max(b.effort,1)) - (a.impact/Math.max(a.effort,1)));
+
+  const expertChips = ['all', ...Object.keys(DATA.experts)].map(k => {
+    const lbl = k === 'all' ? 'Todos' : `${DATA.experts[k].icon} ${DATA.experts[k].name}`;
+    return `<button class="chip ${FILTERS.expert===k?'active':''}" onclick="setFilter('expert','${k}')">${lbl}</button>`;
+  }).join('');
+  const sevChips = ['all','critical','high','medium','low'].map(s =>
+    `<button class="chip ${FILTERS.severity===s?'active':''}" onclick="setFilter('severity','${s}')">${s==='all'?'Todas':SEV_LABEL[s]}</button>`
+  ).join('');
+  const phaseChips = ['all','v1.0','v2.0','v3.0'].map(p =>
+    `<button class="chip ${FILTERS.phase===p?'active':''}" onclick="setFilter('phase','${p}')">${p==='all'?'Todas':p}</button>`
+  ).join('');
+  const statusChips = ['all','pending','done'].map(s =>
+    `<button class="chip ${FILTERS.status===s?'active':''}" onclick="setFilter('status','${s}')">${s==='all'?'Todos':s}</button>`
+  ).join('');
+
+  return `
+    <h2>📋 Asamblea de Expertos</h2>
+    <p class="lead">${DATA.project.unique_value}</p>
+    <div class="stats">
+      <div class="stat"><div class="num">${total}</div><div class="lbl">Total Hallazgos</div></div>
+      <div class="stat ok"><div class="num">${done}</div><div class="lbl">Completados</div></div>
+      <div class="stat warn"><div class="num">${pending}</div><div class="lbl">Pendientes</div></div>
+      <div class="stat crit"><div class="num">${critical}</div><div class="lbl">Críticos</div></div>
+    </div>
+    <div class="progress">
+      <div class="progress-bar" style="width:${pct}%"></div>
+      <div class="progress-text">${pct}% completado · ${done}/${total}</div>
+    </div>
+    <h3>Filtros</h3>
+    <div class="filters">
+      <input type="text" placeholder="🔎 buscar en título/descripción/solución…" oninput="setFilter('search', this.value)">
+    </div>
+    <div class="filters"><b style="font-size:11px;color:var(--muted);width:60px">EXPERTO</b>${expertChips}</div>
+    <div class="filters"><b style="font-size:11px;color:var(--muted);width:60px">SEV</b>${sevChips}</div>
+    <div class="filters"><b style="font-size:11px;color:var(--muted);width:60px">FASE</b>${phaseChips}</div>
+    <div class="filters"><b style="font-size:11px;color:var(--muted);width:60px">ESTADO</b>${statusChips}</div>
+    <h3>Hallazgos (${items.length})</h3>
+    <div class="findings">${items.map(findingCard).join('')}</div>
+  `;
+}
+
+function setFilter(k, v) {
+  FILTERS[k] = v;
+  show('assembly');
+  // restore search focus
+  if (k === 'search') {
+    const inp = document.querySelector('input[type=text]');
+    if (inp) { inp.focus(); inp.setSelectionRange(v.length, v.length); }
+  }
+}
+
+function renderRoadmap() {
+  const all = flat();
+  const cols = ['v1.0','v2.0','v3.0'].map(phase => {
+    const items = (DATA.roadmap[phase]?.items || []).map(id => all.find(f => f.id === id)).filter(Boolean);
+    const itemsHtml = items.map(f => `
+      <div class="rm-item ${f.status==='done'?'done':''}">
+        <span class="dot" style="background:${SEV_COLOR[f.severity]}"></span>
+        <span class="id">${f.id}</span>
+        <div style="flex:1">
+          <div><b>${f.title}</b></div>
+          <div style="color:var(--muted);font-size:11px;margin-top:4px;line-height:1.4">${f.recommendation.slice(0,180)}${f.recommendation.length>180?'…':''}</div>
+        </div>
+      </div>`).join('');
+    return `
+      <div class="rm-col">
+        <h4>${phase} <span class="count">${items.length}</span></h4>
+        <div class="sub">${DATA.roadmap[phase]?.label || ''}</div>
+        ${itemsHtml || '<div style="color:var(--muted);font-size:12px">— vacío —</div>'}
+      </div>`;
+  }).join('');
+  return `<h2>🗺️ Roadmap</h2><p class="lead">Distribución por fases — cada item con su recomendación abreviada. Los items con prioridad más alta deben hacerse primero.</p><div class="roadmap">${cols}</div>`;
+}
+
+function renderDashboard() {
+  const m = METRICS;
+  const cargoSt = m.build.cargo_status;
+  const npmSt = m.build.npm_status;
+
+  return `
+    <h2>📈 Dashboard de Mejora Continua</h2>
+    <p class="lead">Métricas live del repo. <button class="refresh-btn" onclick="refreshMetrics()">↻ Refrescar</button></p>
+    <div class="stats">
+      <div class="stat"><div class="num">${m.files.frontend_ts + m.files.rust_tauri + m.files.python_backend + m.files.llama_helper}</div><div class="lbl">Archivos de código</div></div>
+      <div class="stat ok"><div class="num">${m.tests.rust_markers + m.tests.python_funcs + m.tests.frontend_specs}</div><div class="lbl">Tests totales</div></div>
+      <div class="stat crit"><div class="num">${m.quality.unwrap_calls}</div><div class="lbl">.unwrap() en Rust</div></div>
+      <div class="stat warn"><div class="num">${m.quality.console_log}</div><div class="lbl">console.log en TS</div></div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="dash-tile">
+        <h4>📂 Archivos por stack</h4>
+        <div class="kv"><span>Frontend (TS/TSX)</span><span class="v">${m.files.frontend_ts}</span></div>
+        <div class="kv"><span>Rust Tauri (.rs)</span><span class="v">${m.files.rust_tauri}</span></div>
+        <div class="kv"><span>Python Backend (.py)</span><span class="v">${m.files.python_backend}</span></div>
+        <div class="kv"><span>llama-helper (.rs)</span><span class="v">${m.files.llama_helper}</span></div>
+      </div>
+      <div class="dash-tile">
+        <h4>🧪 Cobertura de tests</h4>
+        <div class="kv"><span>Rust #[test]</span><span class="v ${m.tests.rust_markers<100?'warn':'ok'}">${m.tests.rust_markers}</span></div>
+        <div class="kv"><span>Python def test_</span><span class="v ${m.tests.python_funcs<20?'warn':'ok'}">${m.tests.python_funcs}</span></div>
+        <div class="kv"><span>Frontend .test/.spec</span><span class="v ${m.tests.frontend_specs===0?'crit':'ok'}">${m.tests.frontend_specs}</span></div>
+      </div>
+      <div class="dash-tile">
+        <h4>⚠️ Markers de calidad</h4>
+        <div class="kv"><span>.unwrap() en Rust</span><span class="v ${m.quality.unwrap_calls>50?'crit':'warn'}">${m.quality.unwrap_calls}</span></div>
+        <div class="kv"><span>console.log en TS</span><span class="v ${m.quality.console_log>100?'crit':'warn'}">${m.quality.console_log}</span></div>
+        <div class="kv"><span>: any en TS</span><span class="v warn">${m.quality.ts_any}</span></div>
+        <div class="kv"><span>TODO/FIXME</span><span class="v">${m.quality.todo_fixme}</span></div>
+      </div>
+      <div class="dash-tile">
+        <h4>🔨 Build / dependencias</h4>
+        <div class="kv"><span>cargo check</span><span class="v"><span class="build-status ${cargoSt.state}">${cargoSt.state}${cargoSt.rc!==undefined?' rc='+cargoSt.rc:''}</span></span></div>
+        <div class="kv"><span>npm install</span><span class="v"><span class="build-status ${npmSt.state}">${npmSt.state}${npmSt.rc!==undefined?' rc='+npmSt.rc:''}</span></span></div>
+        <div class="kv"><span>target/ existe</span><span class="v ${m.build.target_exists?'ok':'warn'}">${m.build.target_exists?'sí':'no'}</span></div>
+        <div class="kv"><span>node_modules/</span><span class="v ${m.build.node_modules_exists?'ok':'warn'}">${m.build.node_modules_exists?'sí':'no'}</span></div>
+      </div>
+      <div class="dash-tile">
+        <h4>🌿 Git</h4>
+        <div class="kv"><span>Branch</span><span class="v">${m.git.branch || '?'}</span></div>
+        <div class="kv"><span>Último commit</span><span class="v" style="font-size:10px">${(m.git.last_commit||'').slice(0,30)}</span></div>
+        <div class="kv"><span>Commits ahead</span><span class="v">${m.git.ahead_of_main || '0'}</span></div>
+      </div>
+      <div class="dash-tile">
+        <h4>📋 Asamblea</h4>
+        ${(()=>{const f=flat();const t=f.length;const d=f.filter(x=>x.status==='done').length;const c=f.filter(x=>x.severity==='critical').length;return `
+        <div class="kv"><span>Total findings</span><span class="v">${t}</span></div>
+        <div class="kv"><span>Done</span><span class="v ok">${d}</span></div>
+        <div class="kv"><span>Critical pending</span><span class="v crit">${c}</span></div>
+        <div class="kv"><span>v1.0 (quick wins)</span><span class="v">${DATA.roadmap['v1.0'].items.length}</span></div>
+        <div class="kv"><span>v2.0 (major)</span><span class="v">${DATA.roadmap['v2.0'].items.length}</span></div>
+        <div class="kv"><span>v3.0 (expansión)</span><span class="v">${DATA.roadmap['v3.0'].items.length}</span></div>
+        `})()}
+      </div>
+    </div>
+
+    <h3>📊 Impact vs Effort — todos los hallazgos</h3>
+    <div id="chart-wrap"><canvas id="scatter"></canvas></div>
+
+    <h3>📦 Logs de build (últimas líneas)</h3>
+    <div class="dash-grid">
+      <div class="dash-tile" style="grid-column:span 3">
+        <h4>cargo check</h4>
+        <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11px;max-height:200px;overflow:auto">${(cargoSt.log_tail||'(sin output todavía)').replace(/</g,'&lt;')}</pre>
+      </div>
+      <div class="dash-tile" style="grid-column:span 3">
+        <h4>npm install</h4>
+        <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11px;max-height:200px;overflow:auto">${(npmSt.log_tail||'(sin output todavía)').replace(/</g,'&lt;')}</pre>
+      </div>
+    </div>
+  `;
+}
+
+async function refreshMetrics() {
+  METRICS = await fetch('/api/metrics').then(r => r.json());
+  show('dashboard');
+}
+
+function renderChart() {
+  const ctx = document.getElementById('scatter');
+  if (!ctx) return;
+  const points = flat().map(f => ({
+    x: f.effort, y: f.impact, id: f.id, title: f.title.slice(0,60),
+    backgroundColor: SEV_COLOR[f.severity],
+  }));
+  new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets: [{ label:'Hallazgos', data: points, pointRadius:7, pointHoverRadius:10,
+      backgroundColor: points.map(p => p.backgroundColor) }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      scales: {
+        x: { title:{display:true,text:'Effort (1=fácil → 10=difícil)',color:'#bdc3c7'}, min:0, max:11, ticks:{color:'#7e8694'}, grid:{color:'#252b3a'} },
+        y: { title:{display:true,text:'Impact (1=bajo → 10=alto)',color:'#bdc3c7'}, min:0, max:11, ticks:{color:'#7e8694'}, grid:{color:'#252b3a'} }
+      },
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks: { label: ctx => ctx.raw.id + ': ' + ctx.raw.title } }
+      }
+    }
+  });
+}
+
+async function renderMemory(target) {
+  target.innerHTML = '<h2>🧠 Memoria del Sistema</h2><p class="lead">cargando…</p>';
+  const m = await fetch('/api/memory').then(r => r.json());
+  let html = '<h2>🧠 Memoria del Sistema</h2><p class="lead">Archivos donde el sistema guarda contexto entre ciclos de mejora.</p>';
+  for (const [name, content] of Object.entries(m)) {
+    html += `<div class="memory-section"><h4>📄 ${name}</h4>${marked.parse(content)}</div>`;
+  }
+  target.innerHTML = html;
+}
+
+function renderExperts() {
+  const cards = Object.entries(DATA.experts).map(([k,exp]) => {
+    const findings = exp.findings;
+    const crit = findings.filter(f => f.severity==='critical').length;
+    const done = findings.filter(f => f.status==='done').length;
+    return `
+      <div class="dash-tile">
+        <h4>${exp.icon} ${exp.name}</h4>
+        <p style="font-size:12px;color:var(--muted);font-style:italic;margin:0 0 12px">${exp.summary}</p>
+        <div class="kv"><span>Total findings</span><span class="v">${findings.length}</span></div>
+        <div class="kv"><span>Críticos</span><span class="v crit">${crit}</span></div>
+        <div class="kv"><span>Completados</span><span class="v ok">${done}</span></div>
+        <button class="consult-btn" style="margin-top:12px;width:100%" onclick="filterByExpert('${k}')">Ver hallazgos →</button>
+      </div>`;
+  }).join('');
+  return `<h2>👥 Expertos de la Asamblea</h2><p class="lead">12 perspectivas que auditan el proyecto.</p><div class="dash-grid">${cards}</div>`;
+}
+
+function filterByExpert(k) {
+  FILTERS = { search:'', expert:k, severity:'all', phase:'all', status:'all' };
+  show('assembly');
+}
+
+async function consult(id) {
+  const r = await fetch('/api/consult/' + id).then(r => r.json());
+  const t = r.target;
+  const votes = Object.values(r.votes).map(v =>
+    `<div class="vote ${v.verdict}"><div class="v">${v.verdict}</div>${v.icon||''} ${v.name||''}<br><span style="color:var(--muted);font-size:11px">${v.reason}</span></div>`
+  ).join('');
+  const related = r.related.map(f => `<li><b>${f.id}</b> [${f.expert_icon} ${f.expert_name}] ${f.title}</li>`).join('') || '<li>(sin relacionados)</li>';
+  const conflicts = r.conflicts.map(f => `<li><b>${f.id}</b> [${f.expert_icon} ${f.expert_name}] ${f.title}</li>`).join('') || '<li>(sin conflictos directos)</li>';
+  document.getElementById('modal-content').innerHTML = `
+    <button class="close" onclick="closeModal()">×</button>
+    <h3>🗣️ Consulta a la asamblea sobre <span style="font-family:monospace;color:#5dade2">${t.id}</span></h3>
+    <p style="color:var(--muted);font-size:12px;margin-top:-8px">${t.title}</p>
+    <h4 style="margin:18px 0 8px;font-size:13px">Veredictos por experto</h4>
+    <div class="votes">${votes}</div>
+    <h4 style="margin:18px 0 8px;font-size:13px">🔗 Hallazgos relacionados (${r.related.length})</h4>
+    <ul style="font-size:12px;line-height:1.7;color:#bdc3c7">${related}</ul>
+    <h4 style="margin:18px 0 8px;font-size:13px">⚠️ Conflictos potenciales (${r.conflicts.length})</h4>
+    <ul style="font-size:12px;line-height:1.7;color:#bdc3c7">${conflicts}</ul>
+    <p style="margin-top:18px;font-size:11px;color:var(--muted)">Tensiones estructurales detectadas con: ${r.tension_experts.join(', ') || '(ninguna)'}</p>
+  `;
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+document.querySelectorAll('aside nav button').forEach(b => b.addEventListener('click', () => show(b.dataset.view)));
+loadAll();
+</script>
+</body>
+</html>
+"""
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    return HTMLResponse(INDEX_HTML)
 
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(app, host="127.0.0.1", port=8770)
+    print("\n[Maity Desktop] Portal de Asamblea")
+    print("    http://127.0.0.1:8770\n")
+    uvicorn.run(app, host="127.0.0.1", port=8770, log_level="info")
