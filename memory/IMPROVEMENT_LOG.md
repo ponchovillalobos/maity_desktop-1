@@ -145,3 +145,18 @@ Fallos descubren 3 hallazgos nuevos:
 - **Quality gates:** Python AST parse OK; portal restart rc=0; `/api/findings` devuelve iter=7 commits=12 in-progress=6 ✓
 - **Qué mejora para el usuario:** El dashboard finalmente refleja la realidad. Antes mostraba "0 completados / 88 pendientes / iter 5" (mentira). Ahora muestra "0 done / **6 en PR** / 82 pending / iter 7" con un chip filtrable "En PR" para ver los PRs abiertos. Cuando despiertes y abras el portal, verás los 6 PRs que ya hice + cualquier batch nuevo de la noche en una card azul claramente separada de "pendientes".
 
+### 2026-04-08 — Iter #8 — RUST-008 (SUITE VERDE 77/77 🎉 PRIMERA VEZ)
+
+- **Experto:** 🦀 rust_tauri
+- **Título:** test_calculate_buffer_timeout_bluetooth — fix precision float
+- **Branch:** `improve/RUST-008-bluetooth-buffer-timeout`
+- **PR:** https://github.com/ponchovillalobos/maity_desktop-1/pull/8
+- **Archivos:** `frontend/src-tauri/src/audio/device_detection.rs` (1 línea) + 2 inlines (incremental_saver.rs, loader.rs)
+- **Bug raíz:** `Duration::mul_f32(2.0)` introducía error de precisión por cast f64→f32→f64. 0.08s × 2 esperaba 160ms exactos pero salía 159.999996ms.
+- **Fix:** `base * 2` (Duration soporta `Mul<u32>` exacto sin error de coma flotante).
+- **Quality gates CPU-only:** `cargo test --lib` → **77 passed; 0 failed; 1 ignored** ✅
+- **Qué mejora para el usuario:**
+  1. Cálculo correcto del timeout de buffer para audífonos Bluetooth (160ms exactos)
+  2. **PRIMER 100% de tests pasando del fork**: cualquier regresión futura en módulos de audio/checkpoint/templates/storage será detectada antes de mergear
+  3. Pre-requisito desbloqueado para tener `cargo test --workspace` como quality gate obligatorio en CI estricto B2B
+
