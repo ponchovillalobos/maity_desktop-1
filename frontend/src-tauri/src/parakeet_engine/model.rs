@@ -433,7 +433,7 @@ impl ParakeetModel {
             })
             .collect();
 
-        let text = match &*DECODE_SPACE_RE {
+        let raw_text = match &*DECODE_SPACE_RE {
             Ok(regex) => regex
                 .replace_all(&tokens.join(""), |caps: &regex::Captures| {
                     if caps.get(1).is_some() {
@@ -445,6 +445,9 @@ impl ParakeetModel {
                 .to_string(),
             Err(_) => tokens.join(""), // Fallback if regex failed to compile
         };
+
+        // UX-013: strip hallucinations + special tokens + consecutive repetitions.
+        let text = super::text_cleanup::clean_transcription(&raw_text);
 
         let float_timestamps: Vec<f32> = timestamps
             .iter()

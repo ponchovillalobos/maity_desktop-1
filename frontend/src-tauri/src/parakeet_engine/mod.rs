@@ -20,6 +20,7 @@
 pub mod commands;
 pub mod model;
 pub mod parakeet_engine;
+pub mod text_cleanup; // UX-013: hallucination filter + special token strip
 
 pub use commands::*;
 pub use model::{ParakeetError, ParakeetModel, TimestampedResult};
