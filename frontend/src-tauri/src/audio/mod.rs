@@ -1,5 +1,6 @@
 // src/audio/mod.rs
 pub mod audio_processing;
+pub mod dsp;  // UX-010: HP80Hz + DC remove + peak normalize
 pub mod encode;
 pub mod ffmpeg;
 pub mod vad;
