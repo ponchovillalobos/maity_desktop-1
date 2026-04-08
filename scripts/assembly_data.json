@@ -1,9 +1,9 @@
 {
   "version": "1.0",
   "last_updated": "2026-04-08",
-  "evaluation_cycle": 3,
-  "commits": 19,
-  "iterations": 12,
+  "evaluation_cycle": 4,
+  "commits": 28,
+  "iterations": 18,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -163,10 +163,11 @@
           "impact": 6,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://embarkstudios.github.io/cargo-deny/"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/16"
         },
         {
           "id": "RUST-004",
@@ -443,10 +444,11 @@
           "impact": 6,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://github.com/jsx-eslint/eslint-plugin-jsx-a11y"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/13"
         },
         {
           "id": "FE-004",
@@ -471,10 +473,11 @@
           "impact": 7,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://github.com/vercel/next.js/security/advisories"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/13"
         },
         {
           "id": "FE-006",
@@ -485,10 +488,11 @@
           "impact": 3,
           "effort": 2,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://nextjs.org/docs/messages/react-hydration-error"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/13"
         },
         {
           "id": "FE-007",
@@ -499,10 +503,11 @@
           "impact": 4,
           "effort": 2,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://www.radix-ui.com/primitives/docs/overview/introduction"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/13"
         }
       ]
     },
@@ -535,10 +540,11 @@
           "impact": 9,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "frontend/src-tauri/src/tray.rs"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/14"
         },
         {
           "id": "UX-003",
@@ -577,10 +583,11 @@
           "impact": 6,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "frontend/src/components/recording/RecordingControls.tsx"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/14"
         },
         {
           "id": "UX-006",
@@ -655,10 +662,11 @@
           "impact": 7,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "frontend/src-tauri/src/audio/transcription/deepgram_provider.rs"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/17"
         },
         {
           "id": "STT-004",
@@ -804,10 +812,11 @@
           "impact": 6,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "backend/app/transcript_processor.py"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/17"
         },
         {
           "id": "LLM-007",
@@ -818,10 +827,11 @@
           "impact": 5,
           "effort": 2,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "backend/app/transcript_processor.py"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/17"
         }
       ]
     },
@@ -924,10 +934,11 @@
           "impact": 4,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "frontend/src-tauri/tauri.conf.json"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
         }
       ]
     },
@@ -992,11 +1003,12 @@
           "impact": 7,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://gdpr-info.eu/art-28-gdpr/",
             "https://www.deepgram.com/legal/dpa"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
         },
         {
           "id": "LEG-005",
@@ -1007,10 +1019,11 @@
           "impact": 6,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://www.iubenda.com/en/help/77-terms-and-conditions"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
         },
         {
           "id": "LEG-006",
@@ -1074,11 +1087,12 @@
           "impact": 8,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://www.granola.ai/",
             "https://fathom.video/"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
         },
         {
           "id": "BIZ-003",
