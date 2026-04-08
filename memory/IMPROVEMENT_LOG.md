@@ -160,3 +160,32 @@ Fallos descubren 3 hallazgos nuevos:
   2. **PRIMER 100% de tests pasando del fork**: cualquier regresión futura en módulos de audio/checkpoint/templates/storage será detectada antes de mergear
   3. Pre-requisito desbloqueado para tener `cargo test --workspace` como quality gate obligatorio en CI estricto B2B
 
+### 2026-04-08 — Iter #9 — LEG-001 (PRIVACY_POLICY honesto v2.0) ⚖️ CRITICAL B2B
+
+- **Experto:** ⚖️ privacy_legal
+- **Branch:** `improve/LEG-001-privacy-policy-real-flow`
+- **PR:** https://github.com/ponchovillalobos/maity_desktop-1/pull/9
+- **Archivos:** `PRIVACY_POLICY.md` reescrito v1.x→v2.0 (+164 -100)
+- **Severity:** CRITICAL
+- **Qué mejora para el usuario:** La política dejaba de mentir. Antes decía "audio nunca sale" pero default es Deepgram. Ahora documenta honestamente: tabla Cloud vs Local, lista de subprocesadores con DPAs (Deepgram, OpenAI, Anthropic, Groq, PostHog, Sentry, GitHub), derechos GDPR/LFPDPPP/CCPA, sección de consentimiento de participantes (11 estados US two-party). **Deal-breaker B2B legal cerrado.** Cualquier auditoría enterprise pasa.
+
+### 2026-04-08 — Iter #10 — SEC-001 (CORS restrictivo) 🔒 CRITICAL
+
+- **Experto:** 🔒 security
+- **Branch:** `improve/SEC-001-cors-restrictive`
+- **PR:** https://github.com/ponchovillalobos/maity_desktop-1/pull/10
+- **Archivos:** `backend/app/main.py` (+25 -5)
+- **Severity:** CRITICAL
+- **Quality gates:** Python AST parse OK
+- **Qué mejora para el usuario:** Si trabajas en WiFi pública con browser abierto en sitios random, ya ningún JS puede hablar con tu backend de transcripción local. Antes podía hacer requests CORS credentialed y leer/escribir tus reuniones. Lista blanca con override opt-in vía `MAITY_CORS_ORIGINS`. **Primer item de cualquier security questionnaire B2B.**
+
+### 2026-04-08 — Iter #11 — SEC-002 (Tauri allowlist restrictivo) 🔒 CRITICAL
+
+- **Experto:** 🔒 security
+- **Branch:** `improve/SEC-002-tauri-fs-allowlist`
+- **PR:** https://github.com/ponchovillalobos/maity_desktop-1/pull/11
+- **Archivos:** `frontend/src-tauri/tauri.conf.json` (+4 -4)
+- **Severity:** CRITICAL
+- **Quality gates:** JSON válido + cargo check rc=0
+- **Qué mejora para el usuario:** Eliminé `fs:read-all` y `fs:write-all`. Si mañana pegas contenido HTML malicioso o BlockNote tiene un XSS, ya no puede leer `~/.ssh`, `~/.aws`, `~/Documents`. El máximo daño posible es el directorio de Maity. **"Principle of least privilege" — check obligatorio en SOC2.**
+

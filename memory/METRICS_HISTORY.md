@@ -30,3 +30,6 @@ Histórico de métricas por iteración. Línea por commit/ciclo.
 | 2026-04-07 | 6 | LLM-008 | 76/77 ok | 0 | TBD | 0/88 (6 in-progress) | PR #7 i18n template 'Standup Diario'. Formaliza política es-419-first. cargo test CPU-only rc=0. |
 | 2026-04-08 | 7 | PORTAL-001 | 76/77 ok | 0 | TBD | 0/88 (6 in-progress) | Meta-fix: portal v2.3 5 bugs + JSON sync iter 5→7 commits 8→12 cycle 2→3. Dashboard finalmente refleja reality. |
 | 2026-04-08 | 8 | RUST-008 | **77/77 ok** 🎉 | 0 | TBD | 0/88 (7 in-progress) | PR #8 fix mul_f32 → * 2. **PRIMER 100% test suite verde de la historia del fork.** |
+| 2026-04-08 | 9 | LEG-001 | 77/77 ok | 0 | TBD | 0/88 (8 in-progress) | PR #9 PRIVACY_POLICY v2.0 honesto sobre Deepgram+OpenAI. CRITICAL B2B legal cerrado. |
+| 2026-04-08 | 10 | SEC-001 | 77/77 ok | 0 | TBD | 0/88 (9 in-progress) | PR #10 CORS lista blanca + MAITY_CORS_ORIGINS env override. CRITICAL XSS-from-other-sites cerrado. |
+| 2026-04-08 | 11 | SEC-002 | 77/77 ok | 0 | TBD | 0/88 (10 in-progress) | PR #11 Tauri allowlist sin fs:read-all/write-all. CRITICAL principle-of-least-privilege SOC2. |
