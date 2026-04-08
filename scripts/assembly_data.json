@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-08",
   "evaluation_cycle": 4,
-  "commits": 29,
-  "iterations": 19,
+  "commits": 31,
+  "iterations": 20,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -328,6 +328,23 @@
             "https://github.com/ponchovillalobos/maity_desktop-1/pull/5"
           ],
           "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/5"
+        },
+        {
+          "id": "RUST-011",
+          "title": "Cargo.toml con duplicados, sin organizar y deps git sin pinning estricto",
+          "severity": "medium",
+          "description": "Cargo.toml tenia 6 dependencias declaradas dos o tres veces (which, once_cell, anyhow, reqwest, tauri, futures-channel) sin organizacion clara, esaxx-rs estaba con branch=feat/dynamic-msvc-link (supply-chain risk), metadata del paquete con datos de Meetily/Sujith en lugar de Maity, y rust-version=1.77 obsoleto.",
+          "recommendation": "Refactor completo: eliminar duplicados, organizar en 13 categorias con encabezados ASCII, pinear esaxx-rs a rev exacto, actualizar metadata a Maity, bump rust-version a 1.80, agregar comentario inicial con changelog, crear docs/CARGO_DEPENDENCIES.md y docs/PROJECT_STATUS.md como referencia. Validado con cargo test --lib 77/77 verde.",
+          "impact": 5,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/ponchovillalobos/maity_desktop-1/pull/18",
+            "docs/CARGO_DEPENDENCIES.md",
+            "docs/PROJECT_STATUS.md"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/18"
         }
       ]
     },
@@ -1562,7 +1579,8 @@
         "LEG-005",
         "LEG-006",
         "BIZ-002",
-        "QA-005"
+        "QA-005",
+        "RUST-011"
       ]
     },
     "v2.0": {
