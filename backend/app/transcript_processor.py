@@ -84,6 +84,55 @@ class TranscriptProcessor:
         logger.info("TranscriptProcessor initialized.")
         self.db = DatabaseManager()
         self.active_clients = []  # Track active Ollama client sessions
+    # LLM-006: Whitelist of recommended/supported model identifiers per provider.
+    # Rejects deprecated or unknown model_name values to prevent silent failures
+    # (e.g., user passing 'gpt-3.5-turbo' which is deprecated).
+    MODEL_WHITELIST = {
+        "openai": {
+            "gpt-4o-mini",      # cost-effective default
+            "gpt-4o",           # high-quality
+            "o1-mini",
+            "o1",
+            "gpt-4-turbo",
+        },
+        "anthropic": {
+            "claude-3-5-sonnet-latest",
+            "claude-3-7-sonnet-latest",
+            "claude-haiku-4-5-20251001",
+            "claude-opus-4-6",
+            "claude-3-5-haiku-latest",
+        },
+        "claude": {  # alias used in older configs
+            "claude-3-5-sonnet-latest",
+            "claude-3-7-sonnet-latest",
+            "claude-haiku-4-5-20251001",
+            "claude-opus-4-6",
+            "claude-3-5-haiku-latest",
+        },
+        "groq": {
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+        },
+        # ollama is local and dynamic — no whitelist
+    }
+
+    @classmethod
+    def validate_model(cls, provider: str, model_name: str) -> None:
+        """LLM-006: Validate model_name against whitelist; raise ValueError if invalid."""
+        if provider == "ollama":
+            return  # ollama models are local and dynamic
+        whitelist = cls.MODEL_WHITELIST.get(provider)
+        if whitelist is None:
+            return  # unknown provider — let the existing flow handle the error
+        if model_name not in whitelist:
+            valid = ", ".join(sorted(whitelist))
+            raise ValueError(
+                f"LLM-006: model_name '{model_name}' is not in the whitelist for "
+                f"provider '{provider}'. Valid options: {valid}. "
+                f"If you need a new model, update MODEL_WHITELIST."
+            )
+
     async def process_transcript(self, text: str, model: str, model_name: str, chunk_size: int = 5000, overlap: int = 1000, custom_prompt: str = "") -> Tuple[int, List[str]]:
         """
         Process transcript text into chunks and generate structured summaries for each chunk using an AI model.
@@ -103,6 +152,8 @@ class TranscriptProcessor:
         """
 
         logger.info(f"Processing transcript (length {len(text)}) with model provider={model}, model_name={model_name}, chunk_size={chunk_size}, overlap={overlap}")
+        # LLM-006: Validate model BEFORE invoking any provider
+        self.validate_model(model, model_name)
 
         all_json_data = []
         agent = None # Define agent variable
@@ -146,11 +197,13 @@ class TranscriptProcessor:
                 logger.error(f"Unsupported model provider requested: {model}")
                 raise ValueError(f"Unsupported model provider: {model}")
 
-            # Initialize the agent with the selected LLM
+            # LLM-007: Bump result_retries 2 → 5. Para modelos pequeños (haiku,
+            # llama-3.1-8b) y schemas anidados, 2 reintentos no bastan; 5 da
+            # margen para corregir tras parse-fail manteniendo cap razonable.
             agent = Agent(
                 llm,
                 result_type=SummaryResponse,
-                result_retries=2,
+                result_retries=5,
             )
             logger.info("Pydantic-AI Agent initialized.")
 
