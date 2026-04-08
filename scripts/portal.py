@@ -11,30 +11,239 @@ Endpoints:
     /api/findings      JSON crudo del assembly_data.json
     /api/metrics       Métricas live del repo (counts, tests, unwraps, builds)
     /api/consult/{id}  Consulta a la asamblea sobre un hallazgo (devuelve relacionados/conflictos)
-    /health            OK
+    /health            Health check robusto (uptime, RAM, CPU, assembly_loaded)
+    /api/activity      Resumen de iteraciones recientes
+    /api/memory        Render markdown de memory/*.md
+
+PORTAL-002 (estabilidad, 2026-04-08): añadidos /health robusto, semaphore global,
+content-length cap, try/except wrappers, JSONL request logging con rotación 30d,
+single-instance lock file, JS safeFetch con timeout y graceful degradation.
 """
 from __future__ import annotations
 
+import asyncio
+import atexit
 import json
+import logging
 import os
 import re
+import signal
 import subprocess
+import sys
 import tempfile
 import time
+import traceback
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 TMP = Path(tempfile.gettempdir())
 
 import markdown as md
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+
+# psutil is optional — degrade gracefully if missing
+try:
+    import psutil  # type: ignore
+    _HAS_PSUTIL = True
+except ImportError:
+    _HAS_PSUTIL = False
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSEMBLY_FILE = ROOT / "scripts" / "assembly_data.json"
 MEMORY_DIR = ROOT / "memory"
+REQUEST_LOG_DIR = MEMORY_DIR / "build_logs" / "portal_requests"
+LOCK_FILE = TMP / "maity_portal_8770.lock"
+PORTAL_VERSION = "2.4-PORTAL-002"
+STARTUP_TIME = time.time()
 
-app = FastAPI(title="Maity Desktop — Portal", version="2.0")
+# ──────────────────────────── PORTAL-002: stability ──────────────────────────── #
+# A1: Health endpoint robusto incluye uptime, memoria, CPU
+# A2: Semaphore global limita concurrencia para prevenir OOM en JSON loads grandes
+# A3: Try/except wrapper en endpoints (via _safe_route decorator)
+# A4: Request logging a JSONL con rotación 30 días
+# A5: Single-instance lock file (atexit cleanup)
+# A6: Frontend safeFetch con graceful degradation
+_REQUEST_SEMAPHORE = asyncio.Semaphore(8)  # max 8 requests paralelos (local-only)
+_MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB cap
+_REQUEST_TIMEOUT_S = 10.0  # cualquier endpoint que tarde más se considera fail
+
+# Logger configurado al startup (vs print) para captura controlada
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("maity_portal")
+
+
+def _acquire_lock_file() -> bool:
+    """A5: single-instance via lock file. Returns True if lock acquired."""
+    try:
+        if LOCK_FILE.exists():
+            # Check if the PID inside is alive
+            try:
+                pid_str = LOCK_FILE.read_text(encoding="utf-8").strip()
+                pid = int(pid_str)
+                if _HAS_PSUTIL and psutil.pid_exists(pid):
+                    logger.warning(
+                        "Portal already running with PID %s (lock file %s) — aborting",
+                        pid, LOCK_FILE,
+                    )
+                    return False
+                else:
+                    logger.info("Stale lock file from PID %s, removing", pid)
+                    LOCK_FILE.unlink()
+            except Exception:
+                LOCK_FILE.unlink()
+        LOCK_FILE.write_text(str(os.getpid()), encoding="utf-8")
+        atexit.register(_release_lock_file)
+        # Also handle Ctrl+C / SIGTERM
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                signal.signal(sig, lambda *_: (_release_lock_file(), sys.exit(0)))
+            except (ValueError, OSError):
+                pass  # signal not available on this platform/thread
+        logger.info("PORTAL-002: lock acquired at %s (PID %s)", LOCK_FILE, os.getpid())
+        return True
+    except Exception as e:
+        logger.warning("PORTAL-002: could not acquire lock file: %s (continuing anyway)", e)
+        return True  # don't block startup if lock fails
+
+
+def _release_lock_file() -> None:
+    try:
+        if LOCK_FILE.exists():
+            content = LOCK_FILE.read_text(encoding="utf-8").strip()
+            if content == str(os.getpid()):
+                LOCK_FILE.unlink()
+                logger.info("PORTAL-002: lock released")
+    except Exception:
+        pass
+
+
+def _log_request_jsonl(method: str, path: str, status: int, latency_ms: float,
+                       error: Optional[str] = None) -> None:
+    """A4: request log a JSONL persistente con rotación 30 días."""
+    try:
+        REQUEST_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        day = time.strftime("%Y-%m-%d")
+        log_path = REQUEST_LOG_DIR / f"requests_{day}.jsonl"
+        record = {
+            "ts": time.time(),
+            "method": method,
+            "path": path,
+            "status": status,
+            "latency_ms": round(latency_ms, 2),
+        }
+        if error:
+            record["error"] = error[:500]
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        # Rotación: borra logs >30 días una vez por hora
+        global _LAST_ROTATION_CHECK
+        if time.time() - _LAST_ROTATION_CHECK > 3600:
+            _LAST_ROTATION_CHECK = time.time()
+            _rotate_request_logs()
+    except Exception:
+        pass  # NUNCA crashear el server por logging
+
+
+_LAST_ROTATION_CHECK = 0.0
+
+
+def _rotate_request_logs() -> None:
+    try:
+        if not REQUEST_LOG_DIR.exists():
+            return
+        cutoff = time.time() - (30 * 86400)
+        for f in REQUEST_LOG_DIR.glob("requests_*.jsonl"):
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    logger.info("PORTAL-002: rotated old log %s", f.name)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown hooks."""
+    logger.info("PORTAL-002: portal starting (version %s, PID %s)", PORTAL_VERSION, os.getpid())
+    yield
+    logger.info("PORTAL-002: portal shutting down")
+    _release_lock_file()
+
+
+app = FastAPI(title="Maity Desktop — Portal", version=PORTAL_VERSION, lifespan=lifespan)
+
+
+# A2 + A3: middleware global para semaphore + try/except + request logging + content-length
+@app.middleware("http")
+async def stability_middleware(request: Request, call_next):
+    start = time.time()
+    method = request.method
+    path = request.url.path
+
+    # Content-Length cap (A2)
+    cl_header = request.headers.get("content-length")
+    if cl_header:
+        try:
+            cl = int(cl_header)
+            if cl > _MAX_BODY_BYTES:
+                latency = (time.time() - start) * 1000
+                _log_request_jsonl(method, path, 413, latency, error="payload too large")
+                return JSONResponse(
+                    status_code=413,
+                    content={"error": f"payload too large ({cl} bytes > {_MAX_BODY_BYTES})"},
+                )
+        except ValueError:
+            pass
+
+    # Semaphore (A2) — limita concurrencia para evitar OOM en json loads
+    try:
+        async with _REQUEST_SEMAPHORE:
+            try:
+                # Timeout (A3)
+                response = await asyncio.wait_for(
+                    call_next(request), timeout=_REQUEST_TIMEOUT_S
+                )
+                latency = (time.time() - start) * 1000
+                _log_request_jsonl(method, path, response.status_code, latency)
+                return response
+            except asyncio.TimeoutError:
+                latency = (time.time() - start) * 1000
+                _log_request_jsonl(method, path, 504, latency, error="timeout")
+                logger.warning("Request timeout: %s %s", method, path)
+                return JSONResponse(
+                    status_code=504,
+                    content={"error": f"request timeout after {_REQUEST_TIMEOUT_S}s"},
+                )
+            except HTTPException as he:
+                latency = (time.time() - start) * 1000
+                _log_request_jsonl(method, path, he.status_code, latency, error=str(he.detail))
+                raise
+            except Exception as e:
+                latency = (time.time() - start) * 1000
+                err_msg = f"{type(e).__name__}: {e}"
+                _log_request_jsonl(method, path, 500, latency, error=err_msg)
+                logger.error("Unhandled error in %s %s: %s\n%s",
+                             method, path, err_msg, traceback.format_exc()[:1500])
+                # Graceful degradation: return 500 JSON instead of crash
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": "internal server error", "type": type(e).__name__},
+                )
+    except Exception as outer:
+        # Last-resort safety net: if even the middleware crashes, log and return 500
+        logger.critical("PORTAL-002: middleware itself crashed: %s", outer)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "portal middleware crashed", "details": str(outer)[:200]},
+        )
 
 SEVERITY_COLORS = {
     "critical": "#e74c3c",
@@ -239,7 +448,21 @@ def consult_finding(finding_id: str) -> dict:
 # ──────────────────────────── routes ──────────────────────────── #
 @app.get("/health")
 async def health():
-    return {"ok": True, "assembly": ASSEMBLY_FILE.exists(), "version": "2.0"}
+    result = {
+        "ok": True,
+        "version": PORTAL_VERSION,
+        "uptime_sec": round(time.time() - STARTUP_TIME, 1),
+        "assembly_loaded": ASSEMBLY_FILE.exists(),
+        "pid": os.getpid(),
+    }
+    if _HAS_PSUTIL:
+        try:
+            p = psutil.Process()
+            result["memory_mb"] = round(p.memory_info().rss / 1024 / 1024, 1)
+            result["cpu_percent"] = round(p.cpu_percent(interval=0.05), 1)
+        except Exception:
+            pass
+    return result
 
 
 @app.get("/api/findings")
@@ -546,11 +769,28 @@ let FILTERS = { search:'', expert:'all', severity:'all', phase:'all', status:'al
 let CURRENT_VIEW = 'assembly';
 let LAST_UPDATE = null;
 
+// PORTAL-002: safeFetch with timeout + graceful degradation
+async function safeFetch(url, timeoutMs=3000, fallback=null) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } catch (err) {
+    console.warn('safeFetch failed:', url, err.message);
+    return fallback;
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
 async function loadAll(silent=false) {
   const [d, m] = await Promise.all([
-    fetch('/api/findings?_=' + Date.now()).then(r => r.json()),
-    fetch('/api/metrics?_=' + Date.now()).then(r => r.json()),
+    safeFetch('/api/findings?_=' + Date.now(), 5000, DATA),
+    safeFetch('/api/metrics?_=' + Date.now(), 5000, METRICS),
   ]);
+  if (!d || !m) { console.warn('loadAll: partial failure, keeping old data'); return; }
   DATA = d; METRICS = m;
   LAST_UPDATE = new Date();
   document.getElementById('footer-info').innerHTML =
@@ -1043,6 +1283,13 @@ async def index():
 
 if __name__ == "__main__":
     import uvicorn
-    print("\n[Maity Desktop] Portal de Asamblea")
+    if not _acquire_lock_file():
+        print(f"[Maity Desktop] Portal ya esta corriendo (lock: {LOCK_FILE})")
+        sys.exit(0)
+    atexit.register(_release_lock_file)
+    print("\n[Maity Desktop] Portal de Asamblea " + PORTAL_VERSION)
     print("    http://127.0.0.1:8770\n")
-    uvicorn.run(app, host="127.0.0.1", port=8770, log_level="info")
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=8770, log_level="info")
+    finally:
+        _release_lock_file()
