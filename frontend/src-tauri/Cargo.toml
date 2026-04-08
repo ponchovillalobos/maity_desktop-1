@@ -1,12 +1,31 @@
+# ============================================================================
+#  Maity Desktop — Tauri (Rust) shell
+# ============================================================================
+#  Asistente de reuniones IA con captura dual mic+sistema, transcripción
+#  Deepgram/Whisper en vivo y resúmenes ChatGPT/local LLM.
+#
+#  Repo: https://github.com/Sixale730/maity_desktop
+#  Fork: https://github.com/ponchovillalobos/maity_desktop-1
+#  Licencia: MIT
+#
+#  REFACTOR (RUST-011, 2026-04-08):
+#  - Eliminados duplicados de deps (which/once_cell/anyhow/reqwest/tauri/futures-channel)
+#  - Reorganizado por categorías con encabezados claros
+#  - Pinned esaxx-rs y cpal a rev exacto (supply-chain hardening, ver RUST-003)
+#  - Metadata del paquete actualizada a Maity (no Meetily/Sujith)
+#  - rust-version bumpeado a 1.80
+#  - Comentarios de build-instructions reorganizados al top
+# ============================================================================
+
 [package]
 name = "maity-desktop"
 version = "0.2.31"
-description = "A Tauri App for meeting minutes"
-authors = ["Sujith S"]
+description = "Maity Desktop — asistente de reuniones IA con captura dual y transcripción local-first opcional"
+authors = ["Pancho Villalobos <ponchovillalobos@maity.local>", "Sujith S (upstream)"]
 license = "MIT"
-repository = "https://github.com/Zackriya-Solutions/meeting-minutes"
+repository = "https://github.com/Sixale730/maity_desktop"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.80"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,216 +34,193 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 
-# Hardware acceleration features for whisper-rs
-# Cross-platform GPU acceleration with smart defaults
+# ============================================================================
+#  Build instructions (cargo features)
+# ============================================================================
+#  macOS:     cargo build --release                       (Metal+CoreML auto)
+#  Windows:   cargo build --release                       (CPU)
+#             cargo build --release --features cuda       (NVIDIA)
+#             cargo build --release --features vulkan     (AMD/Intel)
+#  Linux:     cargo build --release                       (CPU)
+#             cargo build --release --features cuda       (NVIDIA)
+#             cargo build --release --features hipblas    (AMD ROCm)
+#             cargo build --release --features vulkan     (otros)
 #
-# BUILD INSTRUCTIONS:
-# ===================
-# macOS:     cargo build --release              (Metal GPU auto-enabledon)
-#
-# Windows:   cargo build --release              (CPU with OpenBLAS)
-#            cargo build --release --features cuda    (NVIDIA GPU)
-#            cargo build --release --features vulkan  (AMD/Intel GPU)
-#
-# Linux:     cargo build --release              (CPU with OpenBLAS)
-#            cargo build --release --features cuda    (NVIDIA GPU)
-#            cargo build --release --features hipblas (AMD GPU with ROCm)
-#            cargo build --release --features vulkan  (Other GPUs)
-#
-# QUICK START: Use the helper scripts!
-#   ./build-gpu.sh (Unix/macOS)
-#   .\build-gpu.ps1 (Windows PowerShell)
-#
+#  Helper scripts:
+#    ./build-gpu.sh        (Unix/macOS)
+#    .\build-gpu.ps1       (Windows PowerShell)
+# ============================================================================
 [features]
-default = ["platform-default"]  # Automatically enables best backend per platform
+default = ["platform-default"]
+platform-default = []  # Auto-enables best backend per platform via target deps below
 
-# Platform-appropriate defaults - see target-specific dependencies below
-platform-default = []
+# Manual GPU acceleration (override defaults)
+metal    = ["whisper-rs/metal"]    # macOS Apple Metal (auto on macOS)
+coreml   = ["whisper-rs/coreml"]   # macOS CoreML (auto on macOS)
+cuda     = ["whisper-rs/cuda"]     # NVIDIA CUDA
+vulkan   = ["whisper-rs/vulkan"]   # AMD/Intel Vulkan
+hipblas  = ["whisper-rs/hipblas"]  # Linux AMD ROCm
 
-# Manual GPU acceleration options (for power users to override defaults)
-metal = ["whisper-rs/metal"]       # macOS: Apple Metal GPU (Auto-enabled on macOS)
-coreml = ["whisper-rs/coreml"]     # macOS: Apple CoreML acceleration
-cuda = ["whisper-rs/cuda"]         # Windows/Linux: NVIDIA CUDA GPU
-vulkan = ["whisper-rs/vulkan"]     # Windows/Linux: AMD/Intel Vulkan GPU
-hipblas = ["whisper-rs/hipblas"]   # Linux: AMD ROCm HIP
+# CPU optimizations
+openblas = ["whisper-rs/openblas"] # Optimized BLAS
+openmp   = ["whisper-rs/openmp"]   # OpenMP parallel processing
 
-# CPU optimizations (fallback for systems without GPU)
-openblas = ["whisper-rs/openblas"] # Optimized BLAS (Auto-enabled on Windows/Linux)
-openmp = ["whisper-rs/openmp"]     # OpenMP parallel processing
 
+# ============================================================================
+#  Build dependencies
+# ============================================================================
 [build-dependencies]
 tauri-build = { version = "2.3.0", features = [] }
-reqwest = { version = "0.11", features = ["blocking", "multipart", "json", "stream"] }
-which = "6.0.1"
+reqwest     = { version = "0.11", features = ["blocking", "multipart", "json", "stream"] }
+which       = "6.0.1"
 
 
+# ============================================================================
+#  Runtime dependencies
+# ============================================================================
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-anyhow = "1.0"
-once_cell = "1.17.1"
-uuid = { version = "1.0", features = ["v4", "serde"] }
-posthog-rs = "0.3.7"
 
-# Cross-platform audio capture
-cpal = "0.15.3"
+# ── Serialization & error handling ─────────────────────────────────────────
+serde       = { version = "1.0", features = ["derive"] }
+serde_json  = "1.0"
+anyhow      = "1.0"
+thiserror   = "2.0.16"
+once_cell   = "1.17.1"
+lazy_static = "1.4.0"
+uuid        = { version = "1.0", features = ["v4", "serde"] }
+url         = "2.5.0"
+chrono      = { version = "0.4.31", features = ["serde"] }
+bytes       = { version = "1.9.0", features = ["serde"] }
+bytemuck    = "1.16.1"
 
-# Wav encoding - now using manual WAV creation instead of hound
-# hound = "3.5"
+# ── Logging & telemetry ─────────────────────────────────────────────────────
+log                 = "0.4"
+env_logger          = "0.11"
+tracing             = "0.1.40"
+tracing-subscriber  = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender    = "0.2"
+sentry              = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
+posthog-rs          = "0.3.7"
+zip                 = "2.1"  # Log export bundle
 
-# Cli ! shouldn't be required if using as lib
-clap = { version = "4.3", features = ["derive"] }
+# ── Async runtime ──────────────────────────────────────────────────────────
+tokio          = { version = "1.32.0", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "process", "tracing"] }
+tokio-util     = "0.7"   # CancellationToken, etc.
+async-trait    = "0.1"
+futures        = "0.3"
+futures-util   = "0.3"
+futures-channel = "0.3.31"
 
-# Dates
-chrono = { version = "0.4.31", features = ["serde"] }
+# ── HTTP & WebSocket ───────────────────────────────────────────────────────
+reqwest            = { version = "0.11", features = ["blocking", "multipart", "json", "stream"] }
+tokio-tungstenite  = { version = "0.21", features = ["native-tls"] }  # Deepgram WS
 
-# Log
-log = "0.4"
-env_logger = "0.11"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-appender = "0.2"
+# ── Filesystem & paths ─────────────────────────────────────────────────────
+dirs  = "5.0.1"
+which = "6.0.1"  # Used by audio/ffmpeg.rs to locate ffmpeg binary
 
-# Zip for log export
-zip = "2.1"
+# ── Database ───────────────────────────────────────────────────────────────
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono"] }
 
-# Crash reporting
-sentry = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
-which = "6.0.1"
+# ── Audio capture & processing ─────────────────────────────────────────────
+cpal          = "0.15.3"           # Cross-platform audio capture
+ebur128       = "0.1"              # EBU R128 loudness normalization (broadcast standard)
+nnnoiseless   = "0.5"              # RNNoise neural noise reduction
+silero_rs     = { git = "https://github.com/emotechlab/silero-rs", rev = "26a6460", package = "silero" }  # VAD
+symphonia     = { version = "0.5.4", features = ["aac", "isomp4", "opt-simd"] }
+rubato        = "0.15.0"           # Sample-rate conversion
+ringbuf       = "0.4.8"            # Lock-free ring buffer for streaming
+realfft       = "3.4.0"
+ndarray       = "0.16"
 
-# Bytes
-bytemuck = "1.16.1"
+# RUST-003: pin ffmpeg-sidecar a rev exacto (no branch=main) para builds reproducibles.
+ffmpeg-sidecar = { git = "https://github.com/nathanbabcock/ffmpeg-sidecar", rev = "33272cc8203d85983f805b23892c889c2308b816" }
 
-# EBU R128 loudness normalization (professional broadcast standard)
-ebur128 = "0.1"
+# ── Speech recognition (whisper-rs is OS-conditional, see below) ───────────
+# Parakeet (ONNX-based fast transcription)
+ort = { version = "2.0.0-rc.10" }  # ONNX Runtime
+# Moonshine uses a custom JSON tokenizer parser (see src/moonshine_engine/) to
+# avoid C++ runtime conflicts on Windows — no separate dep needed here.
+esaxx-rs = "0.1.10"  # Tokenizer dependency (patched, see [patch.crates-io] below)
 
-# Noise suppression - RNNoise-based neural network noise reduction
-nnnoiseless = "0.5"
-
-# Speech recognition and async utilities
-# NOTE: whisper-rs is declared in platform-specific sections below (macOS/Windows/Linux)
-# to ensure correct GPU features are enabled per platform
-futures-util = "0.3"
-silero_rs = { git = "https://github.com/emotechlab/silero-rs", rev = "26a6460", package = "silero" }
-
-# Parakeet (ONNX-based fast transcription) dependencies
-ort = { version = "2.0.0-rc.10" }  # ONNX Runtime for Parakeet models
-thiserror = "2.0.16"                # Error handling for Parakeet
-
-# Moonshine (UsefulSensors edge-optimized transcription) dependencies
-# Note: Using custom JSON-based tokenizer parser to avoid C++ runtime conflicts on Windows
-
-# Async
-tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "process", "tracing"] }
-tokio-util = "0.7"  # Utilities for tokio including CancellationToken
-async-trait = "0.1"  # Trait abstraction for async methods
-
-# WebSocket for cloud transcription providers (Deepgram)
-tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
-futures = "0.3"  # Stream utilities for WebSocket
-
-reqwest = { version = "0.11", features = ["blocking", "multipart", "json", "stream"] }
-
-# crossbeam
+# ── Concurrency primitives ─────────────────────────────────────────────────
 crossbeam = "0.8.4"
-dashmap = "6.1.0"
+dashmap   = "6.1.0"
 
-# Directories
-dirs = "5.0.1"
-
-# Additional dependencies for notification system
-url = "2.5.0"
-
-
-# System monitoring for resource management
+# ── System monitoring ──────────────────────────────────────────────────────
 sysinfo = "0.32"
 
-lazy_static = { version = "1.4.0" }
-realfft = "3.4.0"
-regex = "1.11.0"
-ndarray = "0.16"
-bytes = { version = "1.9.0", features = ["serde"] }
+# ── Misc ───────────────────────────────────────────────────────────────────
+clap   = { version = "4.3", features = ["derive"] }  # CLI for sub-binaries
+rand   = "0.8.5"
+regex  = "1.11.0"
 
-esaxx-rs = "0.1.10"
-symphonia = { version = "0.5.4", features = ["aac", "isomp4", "opt-simd"] }
-rand = "0.8.5"
-rubato = "0.15.0"
-ringbuf = "0.4.8"
-
-ffmpeg-sidecar = { git = "https://github.com/nathanbabcock/ffmpeg-sidecar", branch = "main" }
-
-sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite", "chrono"] }
-
-# Common Tauri configuration
-tauri = { version = "2.10.1", features = [ "macos-private-api", "protocol-asset", "tray-icon"] }
-tauri-plugin-fs = "2.4.0"
-tauri-plugin-dialog = "2.3.0"
-tauri-plugin-store = "2.4.0"
-tauri-plugin-notification = "2.3.1"
-tauri-plugin-updater = "2.10.0"
-tauri-plugin-process = "2.3.0"
-tauri-plugin-deep-link = "2"
+# ── Tauri 2.x core + plugins ───────────────────────────────────────────────
+tauri = { version = "2.10.1", features = ["macos-private-api", "protocol-asset", "tray-icon"] }
+tauri-plugin-fs              = "2.4.0"
+tauri-plugin-dialog          = "2.3.0"
+tauri-plugin-store           = "2.4.0"
+tauri-plugin-notification    = "2.3.1"
+tauri-plugin-updater         = "2.10.0"
+tauri-plugin-process         = "2.3.0"
+tauri-plugin-deep-link       = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
-# macOS-specific dependencies with Metal GPU acceleration
-[target.'cfg(target_os = "macos")'.dependencies]
-tauri = { version = "2.10.1", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
-once_cell = "1.17.1"
-objc = "0.2.7"
-tauri-plugin-log = { version = "2.6.0", features = ["colored"] }
-anyhow = "1.0"
-time = { version = "0.3", features = ["formatting"] }
-reqwest = { version = "0.11", features = ["multipart", "json"] }
-core-graphics = "0.23"
-cidre = { git = "https://github.com/yury/cidre", rev = "a9587fa", features = ["av"] }
-dasp = "0.11.0"
-futures-channel = "0.3.31"
 
-# PERFORMANCE: Enable Metal GPU + CoreML acceleration automatically on macOS
-# CoreML provides additional acceleration for Apple Silicon chips
+# ============================================================================
+#  Platform-specific dependencies
+# ============================================================================
+#  Why per-OS: whisper-rs needs different feature flags per platform to enable
+#  the right GPU backend automatically. Other duplicates (anyhow, reqwest,
+#  once_cell, tauri, futures-channel) were removed in RUST-011 — they're
+#  cross-platform and live in the [dependencies] section above.
+# ============================================================================
+
+# ── macOS: Metal GPU + CoreML auto-enabled ────────────────────────────────
+[target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.13.2", features = ["raw-api", "metal", "coreml"] }
 
-# Windows-specific dependencies
-# Default: CPU-only build (no BLAS)
-# Users can enable features manually:
-#   --features cuda     (NVIDIA GPUs)
-#   --features vulkan   (AMD/Intel GPUs)
-#   --features openblas (OpenBLAS optimization, requires BLAS_INCLUDE_DIRS)
+# ScreenCaptureKit + system audio (macOS only)
+objc              = "0.2.7"
+core-graphics     = "0.23"
+cidre             = { git = "https://github.com/yury/cidre", rev = "a9587fa", features = ["av"] }
+dasp              = "0.11.0"
+time              = { version = "0.3", features = ["formatting"] }
+tauri-plugin-log  = { version = "2.6.0", features = ["colored"] }
+
+# ── Windows: CPU-only by default; opt-in cuda/vulkan/openblas via features ──
 [target.'cfg(target_os = "windows")'.dependencies]
-# CPU-only build (Vulkan disabled for easier compilation)
 whisper-rs = { version = "0.13.2", features = ["raw-api"] }
-futures-channel = "0.3.31"
-# WASAPI for system audio capture (loopback) - captura audio de videollamadas
+# WASAPI for system audio loopback (capturas videollamadas)
 windows = { version = "0.58", features = [
     "Win32_Media_Audio",
     "Win32_System_Com",
     "Win32_Foundation",
     "Win32_Devices_Properties",
-    "Win32_System_Threading",   # Para eventos de sincronización
-    "Win32_Security",           # Para CreateEventW
-    "implement",                # Para implementar interfaces COM
+    "Win32_System_Threading",   # Eventos de sincronizacion
+    "Win32_Security",           # CreateEventW
+    "implement",                # Implementar interfaces COM
 ] }
 
-# Linux-specific dependencies
-# Default: CPU-only build (no BLAS)
-# Users can enable features manually:
-#   --features cuda     (NVIDIA GPUs)
-#   --features vulkan   (AMD/Intel GPUs)
-#   --features hipblas  (AMD ROCm)
-#   --features openblas (OpenBLAS optimization, requires BLAS_INCLUDE_DIRS)
+# ── Linux: CPU-only by default; opt-in cuda/vulkan/hipblas via features ────
 [target.'cfg(target_os = "linux")'.dependencies]
 whisper-rs = { version = "0.13.2", features = ["raw-api"] }
-futures-channel = "0.3.31"
 
+
+# ============================================================================
+#  Dev dependencies (test/bench only)
+# ============================================================================
 [dev-dependencies]
-tempfile = "3.3.0"
-infer = "0.15"
-criterion = { version = "0.5.1", features = ["async_tokio"] }
+tempfile     = "3.3.0"
+infer        = "0.15"
+criterion    = { version = "0.5.1", features = ["async_tokio"] }
 memory-stats = "1.0"
-strsim = "0.10.0"
-futures = "0.3.31"
-tracing-subscriber = "0.3.16"
+strsim       = "0.10.0"
 
+
+# ============================================================================
+#  Patches (RUST-003: pin git deps to specific revs for reproducible builds)
+# ============================================================================
 [patch.crates-io]
-cpal = { git = "https://github.com/RustAudio/cpal", rev = "51c3b43" }
-esaxx-rs = { git = "https://github.com/thewh1teagle/esaxx-rs.git", branch = "feat/dynamic-msvc-link" }
+cpal     = { git = "https://github.com/RustAudio/cpal", rev = "51c3b43" }
+esaxx-rs = { git = "https://github.com/thewh1teagle/esaxx-rs.git", rev = "3c8ac57d245ab328f7c71953b7c116a8d1d5498f" }
