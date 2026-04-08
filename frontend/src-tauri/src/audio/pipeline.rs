@@ -560,9 +560,14 @@ impl AudioCapture {
         }
 
         // AUDIO ENHANCEMENT PIPELINE (Microphone Only)
-        // Processing order is critical: high-pass → noise suppression → normalization
+        // Processing order is critical: DC remove → high-pass → noise suppression → normalization
         // This ensures noise is removed before being amplified by the normalizer
         if matches!(self.device_type, DeviceType::Microphone) {
+            // STEP 0 (UX-010): Remove DC offset before HP filter
+            // A constant DC bias will push the HP filter output off-zero during
+            // the transient and bias the noise suppressor's gain estimates.
+            super::dsp::dc_remove(&mut mono_data);
+
             // STEP 1: Apply high-pass filter to remove low-frequency rumble (< 80 Hz)
             if let Ok(mut hpf_lock) = self.high_pass_filter.lock() {
                 if let Some(ref mut filter) = *hpf_lock {
