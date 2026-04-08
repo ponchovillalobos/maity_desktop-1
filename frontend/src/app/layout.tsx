@@ -372,8 +372,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${sourceSans3.variable} font-sans antialiased`}>
+    <html lang="es" className="dark" suppressHydrationWarning>
+      <body className={`${sourceSans3.variable} font-sans antialiased`} suppressHydrationWarning>
         <Script
           id="chunk-error-recovery"
           strategy="beforeInteractive"
