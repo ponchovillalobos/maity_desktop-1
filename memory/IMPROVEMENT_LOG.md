@@ -118,3 +118,30 @@ Fallos descubren 3 hallazgos nuevos:
 - **Impact/Effort:** 5/10 · 1/10 · prio 5.0
 - **Quality gates:** cargo test CPU-only rc=0 (1m45s compile + 0.00s test)
 - **Qué mejora para el usuario:** Un test verde más en la suite. Formalizamos en código la política "templates en español" del producto es-419-first. Los clientes B2B hispanohablantes ven los nombres en su idioma.
+
+### 2026-04-08 — Iter #7 — PORTAL-001 (auto-audit + fix dashboard)
+
+- **Tipo:** meta-fix del sistema de mejora continua
+- **Bugs detectados en auditoría:**
+  1. Status chips no incluían 'in-progress' → los 6 hallazgos en PR no eran filtrables
+  2. Counter `pending = total - done` inflaba el número de pending (incluía in-progress)
+  3. CSS `.badge.status-in-progress` no existía → badges en curso sin estilo
+  4. Status label binario (`done` vs `pending`) → in-progress mostraba "PENDING"
+  5. Stats cards (4) no tenían contador de in-progress visible
+  6. JSON desincronizado: `iterations:5/commits:8` cuando ya había 6 in-progress y 7 PRs
+- **Fix aplicado en `scripts/portal.py`:**
+  - 5 stat cards (Total / Done / 🔄 En PR / Pendientes / Críticos) con grid 5 cols + responsive
+  - `statusChips = ['all','pending','in-progress','done']` con labels visibles ('Pendientes', 'En PR', 'Done')
+  - CSS `.badge.status-in-progress` color azul
+  - Status label ternario: ✅ DONE / 🔄 EN PR / ⏳ PENDING
+  - `pending` ahora cuenta solo `status==='pending'`, `inprogress` separado
+  - Progress bar muestra "trabajo enviado" (done + inprogress) en lugar de solo done
+- **Fix `scripts/assembly_data.json`:**
+  - `iterations`: 5 → **7**
+  - `commits`: 8 → **12**
+  - `evaluation_cycle`: 2 → **3**
+  - LLM-008 status pending → **in-progress** + pr_url PR #7
+  - last_updated: 2026-04-07 → 2026-04-08
+- **Quality gates:** Python AST parse OK; portal restart rc=0; `/api/findings` devuelve iter=7 commits=12 in-progress=6 ✓
+- **Qué mejora para el usuario:** El dashboard finalmente refleja la realidad. Antes mostraba "0 completados / 88 pendientes / iter 5" (mentira). Ahora muestra "0 done / **6 en PR** / 82 pending / iter 7" con un chip filtrable "En PR" para ver los PRs abiertos. Cuando despiertes y abras el portal, verás los 6 PRs que ya hice + cualquier batch nuevo de la noche en una card azul claramente separada de "pendientes".
+

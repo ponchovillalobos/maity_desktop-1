@@ -28,3 +28,4 @@ Histórico de métricas por iteración. Línea por commit/ciclo.
 | 2026-04-07 | 4 | RUST-010 | 74/77 | 0 | TBD | 0/88 (4 in-progress) | PR #5 cargo fmt --all (123 archivos). cargo check rc=0 34s, cargo fmt --check rc=0 (era rc=1). Primer quality gate desbloqueado. |
 | 2026-04-07 | 5 | RUST-009 | 75/77 ok | 0 | TBD | 0/88 (5 in-progress) | PR #6 fix checkpoint test stereo 48k. NO era bug de zero data loss (reclasificado high). cargo test CPU-only rc=0. |
 | 2026-04-07 | 6 | LLM-008 | 76/77 ok | 0 | TBD | 0/88 (6 in-progress) | PR #7 i18n template 'Standup Diario'. Formaliza política es-419-first. cargo test CPU-only rc=0. |
+| 2026-04-08 | 7 | PORTAL-001 | 76/77 ok | 0 | TBD | 0/88 (6 in-progress) | Meta-fix: portal v2.3 5 bugs + JSON sync iter 5→7 commits 8→12 cycle 2→3. Dashboard finalmente refleja reality. |

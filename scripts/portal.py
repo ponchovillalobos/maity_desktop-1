@@ -365,7 +365,8 @@ main h3 { margin:24px 0 12px; font-size:15px; font-weight:600; color:#bdc3c7; te
 main p.lead { margin:0 0 18px; color:var(--muted); font-size:13px; }
 
 /* Cards grid */
-.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+.stats { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:20px; }
+@media (max-width:1100px) { .stats { grid-template-columns:repeat(3,1fr); } }
 .stat { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
 .stat .num { font-size:30px; font-weight:700; line-height:1; }
 .stat .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:6px; }
@@ -408,6 +409,7 @@ main p.lead { margin:0 0 18px; color:var(--muted); font-size:13px; }
 .badge.expert { background:rgba(255,255,255,0.06); border:1px solid var(--border); color:#bdc3c7; }
 .badge.phase { background:rgba(46,204,113,0.15); color:#2ecc71; border:1px solid rgba(46,204,113,0.3); }
 .badge.status-pending { background:rgba(241,196,15,0.15); color:#f1c40f; border:1px solid rgba(241,196,15,0.3); }
+.badge.status-in-progress { background:rgba(52,152,219,0.2); color:#5dade2; border:1px solid rgba(52,152,219,0.4); }
 .badge.status-done { background:rgba(46,204,113,0.2); color:#2ecc71; border:1px solid rgba(46,204,113,0.4); }
 
 .finding .section { margin:10px 0; }
@@ -618,7 +620,7 @@ function findingCard(f) {
             <span class="badge sev" style="background:${SEV_COLOR[f.severity]}">${SEV_LABEL[f.severity]}</span>
             <span class="badge expert">${f.expert_icon} ${f.expert_name}</span>
             <span class="badge phase">${f.phase}</span>
-            <span class="badge status-${f.status}">${f.status === 'done' ? '✅ DONE' : '⏳ PENDING'}</span>
+            <span class="badge status-${f.status}">${f.status === 'done' ? '✅ DONE' : f.status === 'in-progress' ? '🔄 EN PR' : '⏳ PENDING'}</span>
           </div>
         </header>
         <div class="section">
@@ -744,9 +746,11 @@ function renderAssembly() {
   const all = flat();
   const total = all.length;
   const done = all.filter(f => f.status === 'done').length;
-  const pending = total - done;
+  const inprogress = all.filter(f => f.status === 'in-progress').length;
+  const pending = all.filter(f => f.status === 'pending').length;
   const critical = all.filter(f => f.severity === 'critical').length;
-  const pct = total ? Math.round(done/total*100) : 0;
+  const shipped = done + inprogress;
+  const pct = total ? Math.round(shipped/total*100) : 0;
 
   const items = applyFilters(all).sort((a,b) => (b.impact/Math.max(b.effort,1)) - (a.impact/Math.max(a.effort,1)));
 
@@ -760,8 +764,9 @@ function renderAssembly() {
   const phaseChips = ['all','v1.0','v2.0','v3.0'].map(p =>
     `<button class="chip ${FILTERS.phase===p?'active':''}" onclick="setFilter('phase','${p}')">${p==='all'?'Todas':p}</button>`
   ).join('');
-  const statusChips = ['all','pending','done'].map(s =>
-    `<button class="chip ${FILTERS.status===s?'active':''}" onclick="setFilter('status','${s}')">${s==='all'?'Todos':s}</button>`
+  const statusLabels = {all:'Todos', pending:'Pendientes', 'in-progress':'En PR', done:'Done'};
+  const statusChips = ['all','pending','in-progress','done'].map(s =>
+    `<button class="chip ${FILTERS.status===s?'active':''}" onclick="setFilter('status','${s}')">${statusLabels[s]}</button>`
   ).join('');
 
   return `
@@ -769,13 +774,14 @@ function renderAssembly() {
     <p class="lead">${DATA.project.unique_value}</p>
     <div class="stats">
       <div class="stat"><div class="num">${total}</div><div class="lbl">Total Hallazgos</div></div>
-      <div class="stat ok"><div class="num">${done}</div><div class="lbl">Completados</div></div>
+      <div class="stat ok"><div class="num">${done}</div><div class="lbl">Done (merged)</div></div>
+      <div class="stat" style="border-color:#3498db;background:rgba(52,152,219,0.06)"><div class="num" style="color:#5dade2">${inprogress}</div><div class="lbl">🔄 En PR (listo merge)</div></div>
       <div class="stat warn"><div class="num">${pending}</div><div class="lbl">Pendientes</div></div>
       <div class="stat crit"><div class="num">${critical}</div><div class="lbl">Críticos</div></div>
     </div>
     <div class="progress">
       <div class="progress-bar" style="width:${pct}%"></div>
-      <div class="progress-text">${pct}% completado · ${done}/${total}</div>
+      <div class="progress-text">${pct}% trabajo enviado · ${shipped}/${total} (${done} merged + ${inprogress} en PR)</div>
     </div>
     <h3>Filtros</h3>
     <div class="filters">
