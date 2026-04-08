@@ -42,15 +42,33 @@ app = FastAPI(
 from errors import AppError, app_error_handler
 app.add_exception_handler(AppError, app_error_handler)
 
-# Configure CORS
+# Configure CORS (SEC-001 — restricted to known Maity origins).
+# Defaults to ONLY the Tauri app + Next.js dev server.
+# Override with MAITY_CORS_ORIGINS env var (comma-separated) for custom deployments.
+_default_origins = [
+    "tauri://localhost",          # Tauri webview (production)
+    "https://tauri.localhost",    # Tauri webview (Windows alternate scheme)
+    "http://localhost:3118",      # Next.js dev server (frontend/package.json)
+    "http://127.0.0.1:3118",
+]
+_extra_origins = [
+    o.strip()
+    for o in os.getenv("MAITY_CORS_ORIGINS", "").split(",")
+    if o.strip()
+]
+_allowed_origins = _default_origins + _extra_origins
+
+# Note: with allow_credentials=True, wildcard "*" is rejected by spec.
+# Listing explicit origins is the only valid path for credentialed requests.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],     # Allow all origins for testing
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],     # Allow all methods
-    allow_headers=["*"],     # Allow all headers
-    max_age=3600,            # Cache preflight requests for 1 hour
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Maity-Client-Version"],
+    max_age=3600,
 )
+logger.info(f"CORS allowed origins: {_allowed_origins}")
 
 # Global database manager instance for meeting management endpoints
 db = DatabaseManager()
