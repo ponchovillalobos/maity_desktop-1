@@ -227,7 +227,8 @@ mod tests {
         assert!(template.is_ok());
 
         let template = template.unwrap();
-        assert_eq!(template.name, "Daily Standup");
+        // LLM-008 inline: templates built-in en español (es-419 first)
+        assert_eq!(template.name, "Standup Diario");
         assert!(!template.sections.is_empty());
     }
 

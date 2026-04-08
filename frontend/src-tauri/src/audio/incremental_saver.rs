@@ -441,11 +441,14 @@ mod tests {
         ).unwrap();
 
         // Add 60 seconds worth of audio (should create 2 checkpoints)
-        for _ in 0..120 {  // 120 chunks of 0.5s each
+        // Note: requires QA-008/RUST-009 fixes inlined to compile (see PR #6)
+        for i in 0..120u64 {  // 120 chunks of 0.5s each
             let chunk = AudioChunk {
-                data: vec![0.5f32; 24000],  // 0.5s at 48kHz
+                data: vec![0.5f32; 48000],  // 0.5s stereo interleaved @ 48kHz
                 sample_rate: 48000,
-                device_type: DeviceType::Microphone,
+                timestamp: i as f64 * 0.5,
+                chunk_id: i,
+                device_type: DeviceType::Mixed,
             };
             saver.add_chunk(chunk).unwrap();
         }
