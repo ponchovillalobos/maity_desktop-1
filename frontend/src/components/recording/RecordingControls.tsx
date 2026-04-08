@@ -437,6 +437,8 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                           className={`w-12 h-12 flex items-center justify-center ${isBusy || isRecordingDisabled ? 'bg-[#8a8a8d]' : 'bg-[#ff0050] hover:bg-[#cc0040]'
                             } rounded-full text-white transition-colors relative`}
                           aria-label="Iniciar grabación"
+                          aria-pressed={false}
+                          aria-busy={isValidatingModel}
                         >
                           {isValidatingModel ? (
                             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -470,10 +472,16 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                               : 'bg-white dark:bg-gray-800 border-2 border-[#d0d0d3] dark:border-gray-600 text-[#4a4a4c] dark:text-gray-300 hover:border-gray-400 hover:bg-[#f5f5f6] dark:hover:bg-gray-700'
                               } rounded-full transition-colors relative`}
                             aria-label={isPaused ? 'Reanudar grabación' : 'Pausar grabación'}
+                            aria-pressed={isPaused}
+                            aria-busy={isBusy}
                           >
                             {isPaused ? <Play size={16} /> : <Pause size={16} />}
                             {(isPausing || isResuming) && (
-                              <div className="absolute -top-8 text-[#4a4a4c] dark:text-gray-300 font-medium text-xs">
+                              <div
+                                className="absolute -top-8 text-[#4a4a4c] dark:text-gray-300 font-medium text-xs"
+                                role="status"
+                                aria-live="polite"
+                              >
                                 {isPausing ? 'Pausando...' : 'Reanudando...'}
                               </div>
                             )}
