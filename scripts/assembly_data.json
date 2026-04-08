@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-08",
   "evaluation_cycle": 4,
-  "commits": 31,
-  "iterations": 20,
+  "commits": 36,
+  "iterations": 25,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -675,6 +675,19 @@
           "references": [
             "BLUETOOTH_PLAYBACK_NOTICE.md"
           ]
+        },
+        {
+          "id": "UX-010",
+          "title": "Falta preprocessing DSP en el audio hacia el STT (DC bias + rumble)",
+          "severity": "medium",
+          "description": "El pipeline de audio envia muestras con DC offset y rumble <80Hz directamente al VAD/RNNoise/Parakeet. El DC bias sesga la estimación de ganancia de RNNoise y el transitorio del HP existente. Resultado: STT recibe input menos limpio de lo posible.",
+          "recommendation": "Añadir módulo audio::dsp con dc_remove + high_pass_80hz + peak_normalize_minus3db (7 unit tests). Wire como STEP 0 del mic path en pipeline.rs antes del HP filter existente. PR #19.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/19",
+          "references": []
         }
       ]
     },
@@ -782,6 +795,32 @@
           "references": [
             "frontend/src-tauri/src/audio/vad.rs"
           ]
+        },
+        {
+          "id": "UX-011",
+          "title": "Silero VAD tuneado para Whisper, no para Parakeet (fragmenta speech)",
+          "severity": "high",
+          "description": "Los valores actuales (min_speech 150ms, pos_threshold 0.50, redemption variable) están optimizados para Whisper que maneja bien chunks cortos. Parakeet hallucina en chunks <800ms y pierde contexto sin suficiente padding.",
+          "recommendation": "min_speech_time 150→800ms, redemption floor 1000ms, pos_threshold 0.50→0.55, pre_pad 150→200, post_pad 400→500ms. Documentar MAX_SPEECH_MS=30s como cap soft. Asamblea STT-007 voto 4 APOYA / 0 OBJETA. PR #20.",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/20",
+          "references": []
+        },
+        {
+          "id": "UX-013",
+          "title": "Parakeet emite hallucinations clasicas sin filtro post-processing",
+          "severity": "high",
+          "description": "Parakeet CTC emite tokens especiales ([blank], <unk>, SentencePiece ▁), loops de palabra (\"the the the the\") y loops de frase (\"thank you thank you thank you\"). Estos llegan crudos al UI y al summarizer, degradando el producto final.",
+          "recommendation": "Nuevo módulo parakeet_engine::text_cleanup con strip_special_tokens + dedupe_consecutive_words (max 2) + dedupe_consecutive_phrases (window 2..5). 12 unit tests verdes. Wired en model::decode_tokens antes de poblar TimestampedResult.text. PR #21.",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/21",
+          "references": []
         }
       ]
     },
@@ -1040,6 +1079,19 @@
           "references": [
             "https://response.pagerduty.com/"
           ]
+        },
+        {
+          "id": "PORTAL-002",
+          "title": "Portal de asamblea se cae silenciosamente (sin /health robusto ni logs)",
+          "severity": "high",
+          "description": "El portal FastAPI (puerto 8770) moría sin dejar rastro. /health devolvía solo {ok:true} sin uptime/mem/cpu. Sin Semaphore ni timeout en middleware, sin single-instance lock, sin JSONL request log, y el frontend JS usaba fetch() crudo que cuelga el dashboard al primer hipo del servidor.",
+          "recommendation": "Añadir /health con uptime+mem+cpu+pid+version, Semaphore(8), content-length cap 10MB, middleware con try/except + timeout 10s + JSONL log rotado 30d, lock file con detección PID stale, safeFetch(url, timeout, fallback) en el HTML. Commit e20f838.",
+          "impact": 7,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/commit/e20f838",
+          "references": []
         }
       ]
     },
@@ -1536,6 +1588,19 @@
           "references": [
             "https://www.sqlite.org/wal.html"
           ]
+        },
+        {
+          "id": "UX-012",
+          "title": "ONNX session de Parakeet acumula memoria nativa sin reciclaje",
+          "severity": "medium",
+          "description": "Las arenas internas de onnxruntime crecen lentamente durante sesiones largas. No hay mecanismo de reciclaje de la sesión, lo que llevaría a reuniones de >1h a consumos de RAM crecientes.",
+          "recommendation": "Añadir AtomicU64 inference_count a ParakeetEngine. Cada PARAKEET_RECYCLE_EVERY=100 inferencias exitosas drop del current_model + reload desde disco. ~1 recycle/50s de voz continua, bajo umbral perceptible. PR #22.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/22",
+          "references": []
         }
       ]
     }

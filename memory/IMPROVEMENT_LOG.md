@@ -189,3 +189,36 @@ Fallos descubren 3 hallazgos nuevos:
 - **Quality gates:** JSON válido + cargo check rc=0
 - **Qué mejora para el usuario:** Eliminé `fs:read-all` y `fs:write-all`. Si mañana pegas contenido HTML malicioso o BlockNote tiene un XSS, ya no puede leer `~/.ssh`, `~/.aws`, `~/Documents`. El máximo daño posible es el directorio de Maity. **"Principle of least privilege" — check obligatorio en SOC2.**
 
+
+### 2026-04-08 — Iters #21-25 — PORTAL-002 + UX-010/011/012/013 (5-PR Parakeet stability pack)
+
+Cinco PRs en cadena aprobadas como plan unificado tras auditoría de maity_recorder
+y voto de la asamblea STT-006/007 (4 APOYA / 0 OBJETA).
+
+- **Iter #21 — PORTAL-002** (devops_ci): portal.py /health robusto + Semaphore(8) +
+  JSONL log rotado 30d + single-instance lock + safeFetch JS. Directo a assembly/bootstrap
+  (commit e20f838). El portal ya no se cae silenciosamente.
+
+- **Iter #22 — UX-010** (ux_desktop): nuevo audio::dsp (dc_remove + high_pass_80hz
+  + peak_normalize_minus3db, 7 unit tests verdes). Wired como STEP 0 del mic path.
+  improve/UX-010 → PR #19 → cherry-pick assembly/bootstrap.
+
+- **Iter #23 — UX-011** (transcription): Silero VAD retuneado para Parakeet.
+  min_speech 150→800ms, redemption floor 1000ms, pos_threshold 0.50→0.55,
+  pre/post pad 150/400 → 200/500ms. PR #20.
+
+- **Iter #24 — UX-013** (transcription): nuevo parakeet_engine::text_cleanup
+  (strip [blank]/<unk>/SentencePiece, dedupe words max 2, dedupe phrases window 2..5,
+  12 unit tests). Wired en decode_tokens. PR #21.
+
+- **Iter #25 — UX-012** (performance): ONNX session recycling cada 100 inferencias
+  exitosas (AtomicU64 + drop + reload). Contiene leak lento de onnxruntime. PR #22.
+
+**Tests:** 77/77 lib suite + 7 dsp + 12 text_cleanup ejecutados verdes en
+assembly/bootstrap. cargo check --lib verde en los 4 improve/ off main.
+
+**Qué mejora para el usuario:**
+- Portal ya no muere en medio de una sesión (PORTAL-002)
+- STT recibe audio más limpio (DC, rumble) y sin chunks fragmentados <800ms
+- Transcripción ya no muestra "the the the the" ni [blank] al usuario
+- Reuniones largas no crecen en RAM gracias al recycle
