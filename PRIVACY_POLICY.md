@@ -1,6 +1,6 @@
 # Meetily Privacy Policy
 
-*Last updated: [Current Date]*
+*Last updated: 2026-04-07*
 
 ## Our Privacy-First Commitment
 
@@ -122,4 +122,13 @@ As an open-source project under MIT license, you can:
 
 ---
 
-*This privacy policy applies to Meetily v0.0.5 and later versions. For enterprise deployments, additional privacy controls may be available.*
+*This privacy policy applies to Maity v0.2.31 and later versions. For enterprise deployments, additional privacy controls may be available.*
+
+---
+
+## Document version history
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.1 | 2026-04-07 | Updated metadata: real date, version 0.2.31, product rebranded to Maity (LEG-006) |
+| 1.0 | — | Initial version (Meetily fork baseline) |
