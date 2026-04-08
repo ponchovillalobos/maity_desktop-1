@@ -3,8 +3,8 @@
 //! Provides structured logging to files with automatic rotation,
 //! and export functionality for support debugging.
 
-pub mod file_logger;
 pub mod commands;
+pub mod file_logger;
 
-pub use file_logger::{init_file_logging, get_log_directory};
 pub use commands::*;
+pub use file_logger::{get_log_directory, init_file_logging};

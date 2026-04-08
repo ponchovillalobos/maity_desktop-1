@@ -1,18 +1,18 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use tauri::{AppHandle, Emitter, Runtime};
 use anyhow::Result;
-use log::{debug, error, info, warn};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, StreamConfig};
+use log::{debug, error, info, warn};
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use tauri::{AppHandle, Emitter, Runtime};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct AudioLevelData {
     pub device_name: String,
     pub device_type: String, // "input" or "output"
-    pub rms_level: f32,     // RMS level (0.0 to 1.0)
-    pub peak_level: f32,    // Peak level (0.0 to 1.0)
-    pub is_active: bool,    // Whether audio is being detected
+    pub rms_level: f32,      // RMS level (0.0 to 1.0)
+    pub peak_level: f32,     // Peak level (0.0 to 1.0)
+    pub is_active: bool,     // Whether audio is being detected
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -33,7 +33,10 @@ pub async fn start_monitoring<R: Runtime>(
     app_handle: AppHandle<R>,
     device_names: Vec<String>,
 ) -> Result<()> {
-    info!("Starting audio level monitoring for devices: {:?}", device_names);
+    info!(
+        "Starting audio level monitoring for devices: {:?}",
+        device_names
+    );
 
     // Stop any existing monitoring and wait for cleanup
     IS_MONITORING.store(false, Ordering::SeqCst);
@@ -86,7 +89,10 @@ pub async fn start_monitoring<R: Runtime>(
             let config = match device.default_input_config() {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("Failed to get input config for '{}': {}", device_name_actual, e);
+                    error!(
+                        "Failed to get input config for '{}': {}",
+                        device_name_actual, e
+                    );
                     IS_MONITORING.store(false, Ordering::SeqCst);
                     return;
                 }
@@ -148,7 +154,10 @@ pub async fn start_monitoring<R: Runtime>(
                     )
                 }
                 _ => {
-                    error!("Unsupported sample format for monitoring: {:?}", sample_format);
+                    error!(
+                        "Unsupported sample format for monitoring: {:?}",
+                        sample_format
+                    );
                     IS_MONITORING.store(false, Ordering::SeqCst);
                     return;
                 }
@@ -243,11 +252,7 @@ fn compute_and_store_levels(data: &[f32], channels: u16) {
     let rms = (mono.iter().map(|x| x * x).sum::<f32>() / mono.len() as f32)
         .sqrt()
         .min(1.0);
-    let peak = mono
-        .iter()
-        .map(|x| x.abs())
-        .fold(0.0f32, f32::max)
-        .min(1.0);
+    let peak = mono.iter().map(|x| x.abs()).fold(0.0f32, f32::max).min(1.0);
 
     MIC_RMS.store(rms.to_bits(), Ordering::Relaxed);
     MIC_PEAK.store(peak.to_bits(), Ordering::Relaxed);

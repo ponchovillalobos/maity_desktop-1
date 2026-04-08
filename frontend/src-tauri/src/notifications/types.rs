@@ -54,7 +54,11 @@ pub enum NotificationActionType {
 }
 
 impl Notification {
-    pub fn new(title: impl Into<String>, body: impl Into<String>, notification_type: NotificationType) -> Self {
+    pub fn new(
+        title: impl Into<String>,
+        body: impl Into<String>,
+        notification_type: NotificationType,
+    ) -> Self {
         Self {
             id: None,
             title: title.into(),
@@ -128,7 +132,7 @@ impl Notification {
         Notification::new(
             "Maity",
             "La grabación ha sido detenida y guardada",
-            NotificationType::RecordingStopped
+            NotificationType::RecordingStopped,
         )
         .with_priority(NotificationPriority::Normal)
         .with_timeout(NotificationTimeout::Seconds(3))
@@ -138,7 +142,7 @@ impl Notification {
         Notification::new(
             "Maity",
             "La grabación ha sido pausada",
-            NotificationType::RecordingPaused
+            NotificationType::RecordingPaused,
         )
         .with_priority(NotificationPriority::Normal)
         .with_timeout(NotificationTimeout::Seconds(3))
@@ -148,7 +152,7 @@ impl Notification {
         Notification::new(
             "Maity",
             "La grabación ha sido reanudada",
-            NotificationType::RecordingResumed
+            NotificationType::RecordingResumed,
         )
         .with_priority(NotificationPriority::Normal)
         .with_timeout(NotificationTimeout::Seconds(3))
@@ -167,13 +171,20 @@ impl Notification {
 
     pub fn meeting_reminder(minutes_until: u64, meeting_title: Option<String>) -> Self {
         let body = match meeting_title {
-            Some(title) => format!("La reunión '{}' comienza en {} minutos", title, minutes_until),
+            Some(title) => format!(
+                "La reunión '{}' comienza en {} minutos",
+                title, minutes_until
+            ),
             None => format!("La reunión comienza en {} minutos", minutes_until),
         };
 
-        Notification::new("Maity", body, NotificationType::MeetingReminder(minutes_until))
-            .with_priority(NotificationPriority::High)
-            .with_timeout(NotificationTimeout::Seconds(10))
+        Notification::new(
+            "Maity",
+            body,
+            NotificationType::MeetingReminder(minutes_until),
+        )
+        .with_priority(NotificationPriority::High)
+        .with_timeout(NotificationTimeout::Seconds(10))
     }
 
     pub fn system_error(error: impl Into<String>) -> Self {
@@ -181,7 +192,7 @@ impl Notification {
         Notification::new(
             "Error de Maity",
             error_string.clone(),
-            NotificationType::SystemError(error_string)
+            NotificationType::SystemError(error_string),
         )
         .with_priority(NotificationPriority::Critical)
         .with_timeout(NotificationTimeout::Never)
