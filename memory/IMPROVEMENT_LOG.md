@@ -79,3 +79,20 @@ Fallos descubren 3 hallazgos nuevos:
 `test_get_builtin_template` falla con mismatch "Standup Diario" vs "Daily Standup". Template fue traducido al español pero el test sigue esperando inglés. Decidir politica i18n.
 
 **Qué mejora para el usuario:** Pasamos de "los tests no compilaban — estábamos a ciegas" a "tenemos 74 tests verdes y sabemos exactamente cuáles 3 fallan y por qué". El #2 (RUST-009) es un bug real que descubre que la promesa zero data loss no se cumple al 100% — y ahora podemos arreglarlo en lugar de descubrirlo cuando un usuario empresarial pierda una reunión crítica.
+
+### 2026-04-07 — Iter #4 — RUST-010 (cargo fmt --all)
+
+- **Experto:** 🦀 rust_tauri
+- **Título:** cargo fmt --all -- --check falla con múltiples archivos sin formatear
+- **Branch:** `improve/RUST-010-cargo-fmt-all`
+- **PR:** https://github.com/ponchovillalobos/maity_desktop-1/pull/5
+- **Archivos:** 123 archivos Rust (workspace completo) · +4948 -2797
+- **Impact/Effort:** 3/10 · 1/10 · prio 3.0
+- **Severity:** medium
+- **Phase:** v1.0
+- **Quality gates:**
+  - cargo check --workspace rc=0 (34s) ✅
+  - cargo fmt --all -- --check rc=0 ✅ (era rc=1 antes)
+- **Notas:** Requirió fix manual de trailing whitespace en 2 líneas de whisper_engine.rs (bug interno de rustfmt con literales largos en match arms). El cherry-pick a assembly/bootstrap generó conflicto en incremental_saver.rs (donde también vive el fix de QA-008); resuelto manualmente manteniendo `for i in 0..120u64`.
+- **Estado:** in-progress (PR #5 abierto)
+- **Qué mejora para el usuario:** No cambia nada visible en la app, pero desbloquea el primer quality gate del sistema de auto-mejora. De aquí en adelante cada PR puede pasar `cargo fmt --check` sin ruido, y los diffs en revisión son solo cambios de lógica. Pre-requisito obligatorio para tener un CI estricto cuando lancemos B2B — los clientes enterprise esperan pipelines verdes con fmt+clippy+test.

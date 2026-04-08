@@ -25,3 +25,4 @@ Histórico de métricas por iteración. Línea por commit/ciclo.
 | 2026-04-07 | 2 | QA-008 | 84+ (post-fix) | 0 | TBD | 0/84 (2 in-progress) | PR #3 fix de test broken AudioChunk init. cargo check --tests --lib rc=0 en 1m23s tras fix. |
 | 2026-04-07 | 3 | PY-003 | 74 ok / 3 fail | 0 | TBD | 0/87 (3 in-progress) | PR #4 uvicorn env config. cargo test --workspace ahora corre real (1m08s): 74 pass, 3 fail, 1 ignored. Descubre RUST-008/009/LLM-008. |
 | 2026-04-07 | 3.5 | (test run discovery) | 74/77 | 0 | TBD | 0/87 | RUST-009 CRITICAL: checkpoint logic compromete zero data loss. Top priority. |
+| 2026-04-07 | 4 | RUST-010 | 74/77 | 0 | TBD | 0/88 (4 in-progress) | PR #5 cargo fmt --all (123 archivos). cargo check rc=0 34s, cargo fmt --check rc=0 (era rc=1). Primer quality gate desbloqueado. |
