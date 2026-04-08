@@ -2,15 +2,15 @@
 //!
 //! Main detector that monitors for meetings and triggers notifications/recording.
 
-use std::sync::Arc;
-use tokio::sync::{RwLock, mpsc};
-use tokio::time::{Duration, interval};
-use tauri::{AppHandle, Emitter, Runtime};
-use log::{info, error, debug};
 use anyhow::Result;
+use log::{debug, error, info};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Runtime};
+use tokio::sync::{mpsc, RwLock};
+use tokio::time::{interval, Duration};
 
-use super::process_monitor::{ProcessMonitor, DetectedMeeting};
-use super::settings::{MeetingDetectorSettings, AppAction, load_settings, save_settings};
+use super::process_monitor::{DetectedMeeting, ProcessMonitor};
+use super::settings::{load_settings, save_settings, AppAction, MeetingDetectorSettings};
 
 /// Events emitted by the meeting detector
 #[derive(Debug, Clone, serde::Serialize)]
@@ -90,13 +90,7 @@ impl MeetingDetector {
 
         // Spawn the background monitoring task
         tokio::spawn(async move {
-            run_detector_loop(
-                app_handle,
-                settings,
-                process_monitor,
-                is_running,
-                rx,
-            ).await;
+            run_detector_loop(app_handle, settings, process_monitor, is_running, rx).await;
         });
 
         info!("Meeting detector started");
@@ -116,7 +110,9 @@ impl MeetingDetector {
     /// Send a command to the detector
     pub async fn send_command(&self, cmd: DetectorCommand) -> Result<()> {
         if let Some(tx) = &self.command_tx {
-            tx.send(cmd).await.map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))?;
+            tx.send(cmd)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))?;
         }
         Ok(())
     }
@@ -153,7 +149,8 @@ impl MeetingDetector {
     /// Check for meetings now (manual trigger)
     pub async fn check_now(&self) -> Result<()> {
         if let Some(tx) = &self.command_tx {
-            tx.send(DetectorCommand::CheckNow).await
+            tx.send(DetectorCommand::CheckNow)
+                .await
                 .map_err(|e| anyhow::anyhow!("Failed to send check command: {}", e))?;
         }
         Ok(())

@@ -6,15 +6,15 @@
 // via a background reader task.
 
 use super::deepgram_commands::get_cached_proxy_config;
-use super::provider::{TranscriptionError, TranscriptionProvider, TranscriptResult};
+use super::provider::{TranscriptResult, TranscriptionError, TranscriptionProvider};
 use super::worker::{TranscriptUpdate, SEQUENCE_COUNTER};
 use async_trait::async_trait;
-use futures::{SinkExt, StreamExt};
 use futures::stream::SplitSink;
+use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use serde::Deserialize;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{
@@ -184,7 +184,10 @@ impl DeepgramRealtimeTranscriber {
         {
             let mut ws_guard = self.persistent_ws.lock().await;
             if let Some(ref mut ws) = *ws_guard {
-                if let Err(e) = ws.send(Message::Text(r#"{"type": "CloseStream"}"#.to_string())).await {
+                if let Err(e) = ws
+                    .send(Message::Text(r#"{"type": "CloseStream"}"#.to_string()))
+                    .await
+                {
                     warn!("Failed to send CloseStream to Deepgram: {}", e);
                 }
                 // Close the WebSocket
@@ -314,7 +317,8 @@ impl DeepgramRealtimeTranscriber {
                             "Deepgram connection attempt {}/{} failed: {}. Retrying in {}ms...",
                             attempt, MAX_RECONNECT_ATTEMPTS, safe_msg, RECONNECT_DELAY_MS
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(RECONNECT_DELAY_MS)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(RECONNECT_DELAY_MS))
+                            .await;
                     } else {
                         error!(
                             "Deepgram connection failed after {} attempts: {}",
@@ -333,7 +337,11 @@ impl DeepgramRealtimeTranscriber {
 
     /// Internal: create WebSocket connection and spawn reader task
     async fn connect_websocket(&self, language: Option<&str>) -> Result<(), TranscriptionError> {
-        let label = self.source_label.lock().await.clone()
+        let label = self
+            .source_label
+            .lock()
+            .await
+            .clone()
             .unwrap_or_else(|| "unknown".to_string())
             .to_uppercase();
 
@@ -342,7 +350,10 @@ impl DeepgramRealtimeTranscriber {
                 "Deepgram proxy not configured (no proxy_base_url or jwt)".to_string(),
             )
         })?;
-        debug!("Deepgram proxy WebSocket URL: {}", url.split('?').next().unwrap_or(&url));
+        debug!(
+            "Deepgram proxy WebSocket URL: {}",
+            url.split('?').next().unwrap_or(&url)
+        );
 
         // Extract host from proxy URL for the Host header
         let host = url::Url::parse(&url)
@@ -358,18 +369,24 @@ impl DeepgramRealtimeTranscriber {
             .header("Sec-WebSocket-Version", "13")
             .header("Sec-WebSocket-Key", generate_websocket_key())
             .body(())
-            .map_err(|e| TranscriptionError::EngineFailed(format!("Failed to build request: {}", e)))?;
-
-        println!("[DEEPGRAM-{}] Connecting persistent WebSocket...", label);
-        let (ws_stream, _response) = connect_async(request)
-            .await
             .map_err(|e| {
-                println!("[DEEPGRAM-{}] WebSocket connection error: {}", label, e);
-                TranscriptionError::EngineFailed(format!("WebSocket connection failed: {}", e))
+                TranscriptionError::EngineFailed(format!("Failed to build request: {}", e))
             })?;
 
-        println!("[DEEPGRAM-{}] Persistent WebSocket connected successfully", label);
-        info!("[DEEPGRAM-{}] Connected to Deepgram persistent WebSocket", label);
+        println!("[DEEPGRAM-{}] Connecting persistent WebSocket...", label);
+        let (ws_stream, _response) = connect_async(request).await.map_err(|e| {
+            println!("[DEEPGRAM-{}] WebSocket connection error: {}", label, e);
+            TranscriptionError::EngineFailed(format!("WebSocket connection failed: {}", e))
+        })?;
+
+        println!(
+            "[DEEPGRAM-{}] Persistent WebSocket connected successfully",
+            label
+        );
+        info!(
+            "[DEEPGRAM-{}] Connected to Deepgram persistent WebSocket",
+            label
+        );
 
         let (write, read) = ws_stream.split();
 
@@ -388,7 +405,10 @@ impl DeepgramRealtimeTranscriber {
 
         // Increment connection generation so stale readers will exit
         let my_generation = self.connection_generation.fetch_add(1, Ordering::SeqCst) + 1;
-        info!("[DEEPGRAM-{}] New connection generation: {}", label, my_generation);
+        info!(
+            "[DEEPGRAM-{}] New connection generation: {}",
+            label, my_generation
+        );
 
         // Spawn the reader task
         let event_emitter = self.event_emitter.clone();
@@ -398,7 +418,16 @@ impl DeepgramRealtimeTranscriber {
         let connection_generation = self.connection_generation.clone();
 
         let reader_handle = tokio::spawn(async move {
-            Self::reader_task(read, event_emitter, is_connected, interim_text, source_label, connection_generation, my_generation).await;
+            Self::reader_task(
+                read,
+                event_emitter,
+                is_connected,
+                interim_text,
+                source_label,
+                connection_generation,
+                my_generation,
+            )
+            .await;
         });
 
         *self.reader_handle.lock().await = Some(reader_handle);
@@ -450,16 +479,26 @@ impl DeepgramRealtimeTranscriber {
         connection_generation: Arc<AtomicU64>,
         my_generation: u64,
     ) {
-        let label = source_label.lock().await.clone()
+        let label = source_label
+            .lock()
+            .await
+            .clone()
             .unwrap_or_else(|| "unknown".to_string())
             .to_uppercase();
-        info!("[DEEPGRAM-{}] Reader task started (generation {})", label, my_generation);
+        info!(
+            "[DEEPGRAM-{}] Reader task started (generation {})",
+            label, my_generation
+        );
 
         while let Some(msg) = read.next().await {
             // Check if this reader has been superseded by a newer connection
             if connection_generation.load(Ordering::SeqCst) != my_generation {
-                info!("[DEEPGRAM-{}] Reader task generation {} is stale (current: {}), exiting",
-                    label, my_generation, connection_generation.load(Ordering::SeqCst));
+                info!(
+                    "[DEEPGRAM-{}] Reader task generation {} is stale (current: {}), exiting",
+                    label,
+                    my_generation,
+                    connection_generation.load(Ordering::SeqCst)
+                );
                 break;
             }
             match msg {
@@ -468,7 +507,11 @@ impl DeepgramRealtimeTranscriber {
                     let response: DeepgramResponse = match serde_json::from_str(&text) {
                         Ok(r) => r,
                         Err(e) => {
-                            debug!("Failed to parse Deepgram response: {} (text: {})", e, &text[..text.len().min(200)]);
+                            debug!(
+                                "Failed to parse Deepgram response: {} (text: {})",
+                                e,
+                                &text[..text.len().min(200)]
+                            );
                             continue;
                         }
                     };
@@ -627,8 +670,17 @@ impl TranscriptionProvider for DeepgramRealtimeTranscriber {
         };
 
         if let Err(e) = send_result {
-            let label = self.source_label.lock().await.clone().unwrap_or_else(|| "unknown".to_string());
-            warn!("[DEEPGRAM-{}] Send failed, attempting reconnect: {}", label.to_uppercase(), e);
+            let label = self
+                .source_label
+                .lock()
+                .await
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            warn!(
+                "[DEEPGRAM-{}] Send failed, attempting reconnect: {}",
+                label.to_uppercase(),
+                e
+            );
 
             // Abort old reader task to prevent duplicate emissions
             {
@@ -651,7 +703,11 @@ impl TranscriptionProvider for DeepgramRealtimeTranscriber {
             match ws_guard.as_mut() {
                 Some(ws) => {
                     ws.send(Message::Binary(audio_bytes)).await.map_err(|e| {
-                        error!("[DEEPGRAM-{}] Send failed after reconnect: {}", label.to_uppercase(), e);
+                        error!(
+                            "[DEEPGRAM-{}] Send failed after reconnect: {}",
+                            label.to_uppercase(),
+                            e
+                        );
                         TranscriptionError::EngineFailed(format!("Reconnect send failed: {}", e))
                     })?;
                 }
@@ -837,7 +893,9 @@ mod tests {
         let short_audio = vec![0.0f32; 100]; // Only 100 samples (< 1600 minimum)
 
         let result = transcriber.transcribe(short_audio, None).await;
-        assert!(matches!(result, Err(TranscriptionError::AudioTooShort { .. })));
+        assert!(matches!(
+            result,
+            Err(TranscriptionError::AudioTooShort { .. })
+        ));
     }
-
 }

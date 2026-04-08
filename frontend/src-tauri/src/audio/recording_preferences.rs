@@ -108,7 +108,7 @@ pub async fn load_recording_preferences<R: Runtime>(
     // Try to get the preferences from store
     let prefs = if let Some(value) = store.get("preferences") {
         match serde_json::from_value::<RecordingPreferences>(value.clone()) {
-            #[allow(unused_mut)]  // mut needed on macOS for system_audio_backend update
+            #[allow(unused_mut)] // mut needed on macOS for system_audio_backend update
             Ok(mut p) => {
                 info!("Loaded recording preferences from store");
                 // Update macOS backend to current value if needed
@@ -385,4 +385,3 @@ pub async fn get_audio_backend_info() -> Result<Vec<BackendInfo>, String> {
         }])
     }
 }
-

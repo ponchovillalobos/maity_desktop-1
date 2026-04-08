@@ -2,15 +2,15 @@
 //!
 //! Exposes meeting detection functionality to the frontend.
 
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tauri::{AppHandle, State, Runtime, Wry};
-use log::info;
 use anyhow::Result;
+use log::info;
+use std::sync::Arc;
+use tauri::{AppHandle, Runtime, State, Wry};
+use tokio::sync::RwLock;
 
 use super::detector::{MeetingDetector, UserResponseAction};
 use super::process_monitor::DetectedMeeting;
-use super::settings::{MeetingDetectorSettings, AppAction};
+use super::settings::{AppAction, MeetingDetectorSettings};
 use super::MeetingApp;
 
 /// Shared state for the meeting detector
@@ -46,7 +46,9 @@ pub async fn set_meeting_detector_settings(
 ) -> Result<(), String> {
     info!("Updating meeting detector settings");
     let detector = state.read().await;
-    detector.update_settings(&app, settings).await
+    detector
+        .update_settings(&app, settings)
+        .await
         .map_err(|e| format!("Failed to update settings: {}", e))
 }
 
@@ -58,15 +60,15 @@ pub async fn start_meeting_detector(
 ) -> Result<(), String> {
     info!("Starting meeting detector");
     let mut detector = state.write().await;
-    detector.start(app).await
+    detector
+        .start(app)
+        .await
         .map_err(|e| format!("Failed to start detector: {}", e))
 }
 
 /// Stop the meeting detector
 #[tauri::command]
-pub async fn stop_meeting_detector(
-    state: State<'_, MeetingDetectorState>,
-) -> Result<(), String> {
+pub async fn stop_meeting_detector(state: State<'_, MeetingDetectorState>) -> Result<(), String> {
     info!("Stopping meeting detector");
     let mut detector = state.write().await;
     detector.stop().await;
@@ -98,7 +100,9 @@ pub async fn check_for_meetings_now(
 ) -> Result<Vec<DetectedMeeting>, String> {
     info!("Manual meeting check triggered");
     let detector = state.read().await;
-    detector.check_now().await
+    detector
+        .check_now()
+        .await
         .map_err(|e| format!("Failed to check for meetings: {}", e))?;
     Ok(detector.get_active_meetings().await)
 }
@@ -111,14 +115,15 @@ pub async fn respond_to_meeting_detection(
     meeting_name: Option<String>,
     state: State<'_, MeetingDetectorState>,
 ) -> Result<(), String> {
-    info!("User response to meeting detection: pid={}, action={}", pid, action);
+    info!(
+        "User response to meeting detection: pid={}, action={}",
+        pid, action
+    );
 
     let response_action = match action.as_str() {
-        "start_recording" => {
-            UserResponseAction::StartRecording {
-                meeting_name: meeting_name.unwrap_or_else(|| "Meeting".to_string()),
-            }
-        }
+        "start_recording" => UserResponseAction::StartRecording {
+            meeting_name: meeting_name.unwrap_or_else(|| "Meeting".to_string()),
+        },
         "ignore" => UserResponseAction::Ignore,
         "ignore_always" => UserResponseAction::IgnoreAlways,
         "auto_record_always" => UserResponseAction::AutoRecordAlways,
@@ -126,10 +131,13 @@ pub async fn respond_to_meeting_detection(
     };
 
     let detector = state.read().await;
-    detector.send_command(super::detector::DetectorCommand::UserResponse {
-        pid,
-        action: response_action,
-    }).await.map_err(|e| format!("Failed to send response: {}", e))
+    detector
+        .send_command(super::detector::DetectorCommand::UserResponse {
+            pid,
+            action: response_action,
+        })
+        .await
+        .map_err(|e| format!("Failed to send response: {}", e))
 }
 
 /// Set the action for a specific app
@@ -163,7 +171,9 @@ pub async fn set_meeting_app_action(
     let detector = state.read().await;
     let mut settings = detector.get_settings().await;
     settings.set_app_action(app_enum, action_enum);
-    detector.update_settings(&app, settings).await
+    detector
+        .update_settings(&app, settings)
+        .await
         .map_err(|e| format!("Failed to update settings: {}", e))
 }
 
@@ -191,7 +201,9 @@ pub async fn set_meeting_app_monitoring(
         _ => return Err(format!("Unknown app: {}", meeting_app)),
     }
 
-    detector.update_settings(&app_handle, settings).await
+    detector
+        .update_settings(&app_handle, settings)
+        .await
         .map_err(|e| format!("Failed to update settings: {}", e))
 }
 
@@ -208,7 +220,9 @@ pub async fn set_meeting_detector_enabled(
     let mut settings = detector.get_settings().await;
     settings.enabled = enabled;
 
-    detector.update_settings(&app_handle, settings).await
+    detector
+        .update_settings(&app_handle, settings)
+        .await
         .map_err(|e| format!("Failed to update settings: {}", e))
 }
 
@@ -225,7 +239,9 @@ pub async fn set_meeting_auto_record(
     let mut settings = detector.get_settings().await;
     settings.auto_record = enabled;
 
-    detector.update_settings(&app_handle, settings).await
+    detector
+        .update_settings(&app_handle, settings)
+        .await
         .map_err(|e| format!("Failed to update settings: {}", e))
 }
 

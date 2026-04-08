@@ -42,19 +42,19 @@ pub mod console_utils;
 pub mod database;
 pub mod logging;
 pub mod meeting_detector;
+pub mod moonshine_engine;
 pub mod notifications;
 pub mod ollama;
 pub mod onboarding;
 pub mod openrouter;
 pub mod parakeet_engine;
-pub mod moonshine_engine;
 pub mod state;
 pub mod summary;
 pub mod tray;
 pub mod utils;
 pub mod whisper_engine;
 
-use audio::{list_audio_devices, AudioDevice, trigger_audio_permission};
+use audio::{list_audio_devices, trigger_audio_permission, AudioDevice};
 use log::{error as log_error, info as log_info};
 use notifications::commands::NotificationManagerState;
 use std::sync::Arc;
@@ -120,10 +120,7 @@ async fn start_recording<R: Runtime>(
             )
             .await
             {
-                log_error!(
-                    "Failed to show recording started notification: {}",
-                    e
-                );
+                log_error!("Failed to show recording started notification: {}", e);
             } else {
                 log_info!("Successfully showed recording started notification");
             }
@@ -180,10 +177,7 @@ async fn stop_recording<R: Runtime>(app: AppHandle<R>, args: RecordingArgs) -> R
             )
             .await
             {
-                log_error!(
-                    "Failed to show recording stopped notification: {}",
-                    e
-                );
+                log_error!("Failed to show recording stopped notification: {}", e);
             } else {
                 log_info!("Successfully showed recording stopped notification");
             }
@@ -356,10 +350,7 @@ async fn start_recording_with_devices_and_meeting<R: Runtime>(
             )
             .await
             {
-                log_error!(
-                    "Failed to show recording started notification: {}",
-                    e
-                );
+                log_error!("Failed to show recording started notification: {}", e);
             }
 
             Ok(())

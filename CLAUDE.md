@@ -16,7 +16,45 @@ Este archivo proporciona orientacion a Claude Code al trabajar con este reposito
 - **Backend API**: FastAPI + SQLite (aiosqlite) — modulo DB en `backend/app/db/`
 - **Integracion LLM**: Ollama (local), Claude, Groq, OpenRouter
 
+## Sistema de Asamblea de Expertos + Auto-Mejora
+
+Este fork incluye un sistema completo de Asamblea de Expertos donde 12 perspectivas auditan el proyecto y alimentan un ciclo de mejora continua. **Antes de proponer/aplicar cualquier cambio, consultar la asamblea via `GET http://127.0.0.1:8770/api/consult/{EXP-ID}`** y registrar los veredictos en el commit.
+
+Documentación completa: **`docs/ASSEMBLY.md`**
+
+### Prioridades del proyecto (en orden estricto)
+1. **Cero pérdidas de datos** — ninguna grabación, transcript o summary debe perderse jamás
+2. **Velocidad de transcripción post-sesión casi instantánea** — al colgar, el resumen final está disponible inmediatamente
+3. Velocidad/latencia durante grabación en vivo
+4. Resto
+
+### Componentes
+- **`scripts/assembly_data.json`** — 12 expertos / 84 hallazgos accionables
+- **`scripts/portal.py`** — Portal FastAPI puerto 8770 con sidebar SPA, auto-refresh 8s, `/api/consult`, `/api/activity`, dashboard live de métricas
+- **`.claude/skills/improve/SKILL.md`** + **`.claude/commands/improve-pr.md`** — Workflow 1 branch + 1 commit + 1 PR por hallazgo
+- **`.claude/agents/{auditor,validator,janitor}/AGENT.md`** — Agentes especializados
+- **`memory/`** — IMPROVEMENT_LOG / FAILED_ATTEMPTS / METRICS_HISTORY / ANALYSIS_STATE / build_logs/
+
+### Lanzar el portal
+```bash
+python scripts/portal.py
+# o detached en Windows:
+powershell -Command "Start-Process python -ArgumentList 'scripts/portal.py' -WindowStyle Hidden"
+# → http://127.0.0.1:8770
+```
+
+### Quality gates obligatorios antes de cualquier commit en `improve/*`
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cd frontend && npm run lint && npm run typecheck && npm test
+```
+
 ## Skills (Slash Commands)
+
+### `/improve` y `/improve-pr`
+Ciclo de auto-mejora continua. `/improve-pr` aísla cada hallazgo en su propio branch + PR, consulta a la asamblea, ejecuta quality gates, y actualiza memoria. Ver `.claude/commands/improve-pr.md`.
 
 ### `/build [patch|minor|major]`
 Build firmado de produccion con bump automatico de version semver. Lee signing keys de `frontend/.env`, actualiza la version en 3 archivos (`tauri.conf.json`, `package.json`, `Cargo.toml`), y ejecuta `pnpm run tauri:build` con las credenciales de firma. Definicion: `.claude/skills/build/SKILL.md`

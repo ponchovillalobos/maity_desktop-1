@@ -3,8 +3,8 @@
 //! Monitors running processes to detect meeting applications.
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{System, ProcessRefreshKind, RefreshKind};
 use std::collections::HashSet;
+use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 
 /// Known meeting applications with their process names
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -164,7 +164,7 @@ impl ProcessMonitor {
     /// Create a new process monitor
     pub fn new() -> Self {
         let system = System::new_with_specifics(
-            RefreshKind::new().with_processes(ProcessRefreshKind::everything())
+            RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
         );
         Self {
             system,
@@ -178,7 +178,7 @@ impl ProcessMonitor {
         self.system.refresh_processes_specifics(
             sysinfo::ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::new()
+            ProcessRefreshKind::new(),
         );
 
         let patterns = get_process_patterns();
@@ -236,11 +236,14 @@ impl ProcessMonitor {
         }
 
         // Clean up stale PIDs
-        let current_pids: HashSet<u32> = self.system.processes()
+        let current_pids: HashSet<u32> = self
+            .system
+            .processes()
             .keys()
             .map(|pid| pid.as_u32())
             .collect();
-        self.previously_detected.retain(|pid| current_pids.contains(pid));
+        self.previously_detected
+            .retain(|pid| current_pids.contains(pid));
 
         new_detected
     }
@@ -250,7 +253,7 @@ impl ProcessMonitor {
         self.system.refresh_processes_specifics(
             sysinfo::ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::new()
+            ProcessRefreshKind::new(),
         );
 
         let patterns = get_process_patterns();
@@ -275,7 +278,7 @@ impl ProcessMonitor {
         self.system.refresh_processes_specifics(
             sysinfo::ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::new()
+            ProcessRefreshKind::new(),
         );
 
         let patterns = get_process_patterns();
