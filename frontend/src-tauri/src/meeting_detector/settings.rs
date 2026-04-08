@@ -2,9 +2,9 @@
 //!
 //! Configuration for meeting detection and auto-recording behavior.
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use anyhow::Result;
 use tauri::{AppHandle, Manager, Runtime};
 
 use super::MeetingApp;
@@ -89,7 +89,7 @@ impl Default for MonitoredApps {
             microsoft_teams: true,
             google_meet: true,
             webex: true,
-            slack: false, // Slack huddles are less common
+            slack: false,   // Slack huddles are less common
             discord: false, // Discord is often not for work meetings
             skype: true,
         }
@@ -152,7 +152,9 @@ fn get_settings_path<R: Runtime>(app_handle: &AppHandle<R>) -> Result<PathBuf> {
 }
 
 /// Load settings from disk
-pub async fn load_settings<R: Runtime>(app_handle: &AppHandle<R>) -> Result<MeetingDetectorSettings> {
+pub async fn load_settings<R: Runtime>(
+    app_handle: &AppHandle<R>,
+) -> Result<MeetingDetectorSettings> {
     let path = get_settings_path(app_handle)?;
 
     if !path.exists() {

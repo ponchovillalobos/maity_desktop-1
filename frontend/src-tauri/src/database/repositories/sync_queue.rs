@@ -151,10 +151,7 @@ impl SyncQueueRepository {
     }
 
     /// Reset stale jobs that have been in_progress for more than stale_seconds
-    pub async fn reset_stale_jobs(
-        pool: &SqlitePool,
-        stale_seconds: i64,
-    ) -> Result<u64, SqlxError> {
+    pub async fn reset_stale_jobs(pool: &SqlitePool, stale_seconds: i64) -> Result<u64, SqlxError> {
         let result = sqlx::query(
             "UPDATE sync_queue SET status = 'pending', updated_at = datetime('now')
              WHERE status = 'in_progress'
@@ -201,10 +198,7 @@ impl SyncQueueRepository {
     }
 
     /// Delete all sync_queue entries for a meeting (used in cascade delete)
-    pub async fn delete_by_meeting(
-        pool: &SqlitePool,
-        meeting_id: &str,
-    ) -> Result<u64, SqlxError> {
+    pub async fn delete_by_meeting(pool: &SqlitePool, meeting_id: &str) -> Result<u64, SqlxError> {
         let result = sqlx::query("DELETE FROM sync_queue WHERE meeting_id = ?")
             .bind(meeting_id)
             .execute(pool)
@@ -218,19 +212,14 @@ impl SyncQueueRepository {
         pool: &SqlitePool,
         id: i64,
     ) -> Result<Option<SyncQueueJob>, SqlxError> {
-        sqlx::query_as::<_, SyncQueueJob>(
-            "SELECT * FROM sync_queue WHERE id = ?",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as::<_, SyncQueueJob>("SELECT * FROM sync_queue WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
     }
 
     /// Clean up old completed jobs (older than N days)
-    pub async fn cleanup_old_completed(
-        pool: &SqlitePool,
-        days: i64,
-    ) -> Result<u64, SqlxError> {
+    pub async fn cleanup_old_completed(pool: &SqlitePool, days: i64) -> Result<u64, SqlxError> {
         let result = sqlx::query(
             "DELETE FROM sync_queue WHERE status = 'completed' AND completed_at <= datetime('now', '-' || ? || ' days')",
         )

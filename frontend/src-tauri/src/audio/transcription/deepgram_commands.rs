@@ -4,7 +4,7 @@
 // Handles proxy configuration management for connecting via Cloudflare Worker proxy.
 // The API key never reaches the client — the proxy holds it server-side.
 
-use log::{info, warn, error};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -64,7 +64,11 @@ const JWT_TTL_SECS: u64 = 300;
 /// Set the proxy configuration (called from frontend after fetching from Vercel API)
 /// This is the bridge between the TypeScript API client and Rust transcription
 #[tauri::command]
-pub async fn set_deepgram_proxy_config(proxy_base_url: String, jwt: String, expires_in: u64) -> Result<(), String> {
+pub async fn set_deepgram_proxy_config(
+    proxy_base_url: String,
+    jwt: String,
+    expires_in: u64,
+) -> Result<(), String> {
     info!("Setting Deepgram proxy config (expires in {}s)", expires_in);
 
     // Validate inputs
@@ -97,7 +101,9 @@ pub async fn set_deepgram_proxy_config(proxy_base_url: String, jwt: String, expi
 /// This runs the HTTP request from Rust to avoid CORS issues in the WebView.
 /// Caches the config internally and returns it.
 #[tauri::command]
-pub async fn fetch_deepgram_proxy_config(access_token: String) -> Result<DeepgramProxyConfig, String> {
+pub async fn fetch_deepgram_proxy_config(
+    access_token: String,
+) -> Result<DeepgramProxyConfig, String> {
     // Check if we have a valid cached config first
     {
         let cache = PROXY_CONFIG_CACHE.lock().map_err(|e| {
@@ -130,7 +136,10 @@ pub async fn fetch_deepgram_proxy_config(access_token: String) -> Result<Deepgra
         .await
         .map_err(|e| {
             error!("Network error calling Vercel API: {}", e);
-            format!("network:Error de conexión. Verifica tu internet e intenta de nuevo. ({})", e)
+            format!(
+                "network:Error de conexión. Verifica tu internet e intenta de nuevo. ({})",
+                e
+            )
         })?;
 
     let status = response.status();
@@ -138,13 +147,18 @@ pub async fn fetch_deepgram_proxy_config(access_token: String) -> Result<Deepgra
 
     if status == reqwest::StatusCode::UNAUTHORIZED {
         warn!("Got 401 from Vercel API - session may be expired");
-        return Err("auth:Tu sesión ha expirado. Por favor cierra sesión y vuelve a iniciar.".to_string());
+        return Err(
+            "auth:Tu sesión ha expirado. Por favor cierra sesión y vuelve a iniciar.".to_string(),
+        );
     }
 
     if status.is_server_error() {
         let body = response.text().await.unwrap_or_default();
         error!("Server error from Vercel API: {} - {}", status, body);
-        return Err(format!("server:Error del servidor al obtener credenciales de transcripción ({})", status));
+        return Err(format!(
+            "server:Error del servidor al obtener credenciales de transcripción ({})",
+            status
+        ));
     }
 
     if !status.is_success() {
@@ -163,7 +177,10 @@ pub async fn fetch_deepgram_proxy_config(access_token: String) -> Result<Deepgra
     // ws_url format: "wss://proxy.workers.dev?token=JWT&model=...&language=..."
     let ws_url = Url::parse(&data.ws_url).map_err(|e| {
         error!("Failed to parse ws_url: {}", e);
-        format!("server:Respuesta del servidor inválida: URL malformada ({})", e)
+        format!(
+            "server:Respuesta del servidor inválida: URL malformada ({})",
+            e
+        )
     })?;
 
     let jwt = ws_url
@@ -176,7 +193,12 @@ pub async fn fetch_deepgram_proxy_config(access_token: String) -> Result<Deepgra
         })?;
 
     // Build proxy base URL (scheme + host + path, no query params)
-    let proxy_base_url = format!("{}://{}{}", ws_url.scheme(), ws_url.host_str().unwrap_or(""), ws_url.path());
+    let proxy_base_url = format!(
+        "{}://{}{}",
+        ws_url.scheme(),
+        ws_url.host_str().unwrap_or(""),
+        ws_url.path()
+    );
 
     info!("Proxy config obtained - base URL: {}", proxy_base_url);
 
@@ -195,7 +217,10 @@ pub async fn fetch_deepgram_proxy_config(access_token: String) -> Result<Deepgra
         });
     }
 
-    info!("Proxy config cached successfully (expires in {}s)", JWT_TTL_SECS);
+    info!(
+        "Proxy config cached successfully (expires in {}s)",
+        JWT_TTL_SECS
+    );
 
     Ok(DeepgramProxyConfig {
         proxy_base_url,
