@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-07",
   "evaluation_cycle": 1,
-  "commits": 1,
-  "iterations": 1,
+  "commits": 2,
+  "iterations": 2,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -173,7 +173,8 @@
         {"id":"QA-004","title":"Solo 2 archivos de tests en backend Python","severity":"high","description":"backend/tests contiene solo test_api_endpoints.py y test_db.py. backend/app/ tiene múltiples módulos sin cobertura. pytest.ini no tiene --cov ni mínimo.","recommendation":"1) Agregar pytest-cov a requirements-dev.txt. 2) pytest.ini: addopts = --cov=app --cov-fail-under=60. 3) Crear test_summarization.py, test_whisper_integration.py. 4) Mockear OpenAI/Anthropic con responses.","impact":7,"effort":5,"phase":"v2.0","status":"pending","references":["https://pytest-cov.readthedocs.io/"]},
         {"id":"QA-005","title":"Sin fixtures de audio versionadas para tests determinísticos","severity":"medium","description":"No existe directorio tests/fixtures/audio/. Tests de transcripción dependen de generar audio en runtime o de descargar modelos pesados. Whisper produce salidas distintas según versión.","recommendation":"1) tests/fixtures/audio/ con: silencio.wav, tono_440hz.wav, voz_es_corta.wav, voz_en_corta.wav, ruido_blanco.wav. 2) Generar con ffmpeg + festival/say. 3) Versionar con git-lfs. 4) Documentar método reproducible.","impact":6,"effort":3,"phase":"v1.0","status":"pending","references":["https://git-lfs.github.com/"]},
         {"id":"QA-006","title":"Sin smoke tests post-release del binario instalado","severity":"medium","description":"Después del build .exe/.msi no hay verificación automática que el binario instala, abre, y graba 5 segundos sin crash. Los usuarios son los primeros en reportar crashes.","recommendation":"1) Workflow 'release-smoke-test' que: instala .msi, ejecuta el .exe via tauri-driver, simula clic en grabar, verifica .wav, mata proceso. 2) Bloquear publicación si falla.","impact":7,"effort":5,"phase":"v2.0","status":"pending","references":["https://docs.github.com/en/actions"]},
-        {"id":"QA-007","title":"Sin tests de regresión para flujo de consent y privacidad","severity":"high","description":"Existe AnalyticsConsentSwitch.tsx pero sin test que verifique: default opt-OUT, persistencia, PostHog NO se inicializa antes de aceptación, revocar consent borra cookies/event queue. Una regresión es violación directa de GDPR art. 7.","recommendation":"1) tests/unit/AnalyticsConsentSwitch.test.tsx. 2) Test de integración Rust verificando que posthog-rs no envía sin flag de consent. 3) Test E2E con MSW/nock interceptando hits.","impact":9,"effort":4,"phase":"v2.0","status":"pending","references":["https://gdpr-info.eu/art-7-gdpr/"]}
+        {"id":"QA-007","title":"Sin tests de regresión para flujo de consent y privacidad","severity":"high","description":"Existe AnalyticsConsentSwitch.tsx pero sin test que verifique: default opt-OUT, persistencia, PostHog NO se inicializa antes de aceptación, revocar consent borra cookies/event queue. Una regresión es violación directa de GDPR art. 7.","recommendation":"1) tests/unit/AnalyticsConsentSwitch.test.tsx. 2) Test de integración Rust verificando que posthog-rs no envía sin flag de consent. 3) Test E2E con MSW/nock interceptando hits.","impact":9,"effort":4,"phase":"v2.0","status":"pending","references":["https://gdpr-info.eu/art-7-gdpr/"]},
+        {"id":"QA-008","title":"AudioChunk literal en test rompe cargo test --workspace (E0063)","severity":"critical","description":"frontend/src-tauri/src/audio/incremental_saver.rs:445 construía AudioChunk solo con data, sample_rate y device_type, pero la struct AudioChunk en recording_state.rs:20 también requiere chunk_id (u64) y timestamp (f64). Esto provocaba E0063 'missing fields chunk_id and timestamp' y hacía fallar `cargo test --workspace` con rc=101 en 6m34s, bloqueando completamente el quality gate del workflow /improve-pr y por tanto cualquier mejora futura. Detectado en el primer baseline run real, NO estaba en la asamblea original.","recommendation":"Cambiar `for _ in 0..120` a `for i in 0..120u64` y agregar chunk_id: i, timestamp: i as f64 * 0.5 al literal AudioChunk en el test test_incremental_save_creates_checkpoints. Validado: cargo check --tests --lib rc=0 en 1m23s.","impact":9,"effort":1,"phase":"v1.0","status":"in-progress","references":["https://github.com/ponchovillalobos/maity_desktop-1/pull/3","https://doc.rust-lang.org/error_codes/E0063.html"],"pr_url":"https://github.com/ponchovillalobos/maity_desktop-1/pull/3"}
       ]
     },
     "performance": {
@@ -195,7 +196,7 @@
   "roadmap": {
     "v1.0": {
       "label": "Quick Wins (2-4 semanas)",
-      "items": ["SEC-001","SEC-002","SEC-006","RUST-003","RUST-007","PY-001","PY-002","PY-003","PY-004","PY-005","PY-007","FE-003","FE-005","FE-006","FE-007","UX-002","UX-004","UX-005","UX-006","STT-003","LLM-004","LLM-006","LLM-007","OPS-006","OPS-007","LEG-001","LEG-004","LEG-005","LEG-006","BIZ-002","QA-005"]
+      "items": ["QA-008","SEC-001","SEC-002","SEC-006","RUST-003","RUST-007","PY-001","PY-002","PY-003","PY-004","PY-005","PY-007","FE-003","FE-005","FE-006","FE-007","UX-002","UX-004","UX-005","UX-006","STT-003","LLM-004","LLM-006","LLM-007","OPS-006","OPS-007","LEG-001","LEG-004","LEG-005","LEG-006","BIZ-002","QA-005"]
     },
     "v2.0": {
       "label": "Major Features (2-3 meses)",

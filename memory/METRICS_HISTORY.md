@@ -21,3 +21,5 @@ Histórico de métricas por iteración. Línea por commit/ciclo.
 |---|---|---|---|---|---|---|---|
 | 2026-04-07 | 0 | (baseline) | 84 | 0 | TBD | 0/83 | cargo check rc=0 (5m28s), npm install rc=0 (3m, 697 pkg), 126 unwrap, 442 console.log, 47 any |
 | 2026-04-07 | 1 | LEG-006 | 84 | 0 | TBD | 0/83 (1 in-progress) | PR #2 abierto, esperando merge |
+| 2026-04-07 | 1.5 | (test run) | FAIL E0063 | 0 | TBD (log 862KB) | – | cargo test rc=101 6m34s, fmt rc=1, lint rc=1 (eslint no configurado), tsc rc=0. Descubre QA-008. |
+| 2026-04-07 | 2 | QA-008 | 84+ (post-fix) | 0 | TBD | 0/84 (2 in-progress) | PR #3 fix de test broken AudioChunk init. cargo check --tests --lib rc=0 en 1m23s tras fix. |
