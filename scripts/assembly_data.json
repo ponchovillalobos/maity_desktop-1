@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-08",
   "evaluation_cycle": 4,
-  "commits": 28,
-  "iterations": 18,
+  "commits": 29,
+  "iterations": 19,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -116,6 +116,48 @@
           "status": "pending",
           "references": [
             "https://v2.tauri.app/plugin/updater/"
+          ]
+        },
+        {
+          "id": "SEC-008",
+          "title": "Sin SSO/SAML/OIDC para auth empresarial",
+          "severity": "critical",
+          "description": "Maity solo soporta API keys BYOK individuales. Para venta B2B, los clientes enterprise requieren SSO via SAML 2.0 o OIDC (Okta, Azure AD, Google Workspace). Sin esto, la app no pasa el security questionnaire de cualquier empresa Fortune 500.",
+          "recommendation": "Integrar tauri-plugin-oauth o redirect a SSO via deep-link maity://. Soportar al menos: Azure AD, Okta, Google Workspace, Auth0. Mapear claims SAML/OIDC a roles internos (ver SEC-009).",
+          "impact": 10,
+          "effort": 8,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://www.okta.com/identity-101/sso/"
+          ]
+        },
+        {
+          "id": "SEC-009",
+          "title": "Sin RBAC ni audit logs persistentes",
+          "severity": "high",
+          "description": "No hay roles ni control de acceso. Cualquier usuario que abre la app puede hacer todo. Para B2B se necesitan roles (admin, manager, member, viewer) y audit logs (quien grabo, cuando, que reuniones leyo, exports). Sin esto no hay forma de cumplir SOC 2 CC6 (Logical Access).",
+          "recommendation": "Tabla audit_log en SQLite con (timestamp, user_id, action, resource_id, ip_address, success). Tabla roles con permisos. Middleware en cada comando Tauri para verificar permisos. Export de logs en CSV/JSON.",
+          "impact": 9,
+          "effort": 7,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2"
+          ]
+        },
+        {
+          "id": "SEC-010",
+          "title": "Sin opcion de data residency / on-premise",
+          "severity": "high",
+          "description": "Clientes en EU, sectores regulados (salud, finanzas, gobierno) requieren que los datos no salgan de su jurisdiccion. Maity actualmente no ofrece on-premise self-hosted, ni region EU para Deepgram/OpenAI, ni air-gapped mode formal.",
+          "recommendation": "1) Documentar el modo Local 100% como on-premise explicito en docs/B2B_DEPLOYMENT.md. 2) Soportar Deepgram self-hosted (su edicion enterprise). 3) Soportar Anthropic Claude via Bedrock (region EU). 4) Modo air-gapped: detectar ausencia de red y bloquear features cloud automaticamente.",
+          "impact": 8,
+          "effort": 7,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://www.deepgram.com/learn/self-hosted-speech-recognition"
           ]
         }
       ]
@@ -939,6 +981,48 @@
             "frontend/src-tauri/tauri.conf.json"
           ],
           "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
+        },
+        {
+          "id": "OPS-008",
+          "title": "Sin SOC 2 compliance roadmap documentado",
+          "severity": "high",
+          "description": "Para vender a empresas medianas+ (>500 employees), SOC 2 Type II es de facto obligatorio. Sin un roadmap publico, los buyers asumen que estamos años de poder firmarlo. Vanta/Drata/Secureframe estandarizan el proceso pero requieren documentacion previa.",
+          "recommendation": "docs/SOC2_ROADMAP.md con: controls que ya cumplimos (CC5, CC6, CC7), gaps actuales, timeline estimado a Type I (3-6 meses) y Type II (1 año). Listar herramienta de monitoreo elegida (Vanta/Drata/Secureframe) y auditor.",
+          "impact": 8,
+          "effort": 5,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://www.vanta.com/resources/soc-2-compliance"
+          ]
+        },
+        {
+          "id": "OPS-009",
+          "title": "Sin status page publica",
+          "severity": "medium",
+          "description": "Sin status.maity.local o similar, los clientes B2B no tienen forma de verificar uptime, incidentes pasados, o si hay un outage AHORA. Es uno de los items checklist de cualquier enterprise procurement.",
+          "recommendation": "Status page (statuspage.io, BetterUptime, Cachet self-hosted) que monitoree: backend api, deepgram, openai, updater. Publicar incidentes con post-mortem. Mantener historial 90 dias.",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://www.atlassian.com/software/statuspage"
+          ]
+        },
+        {
+          "id": "OPS-010",
+          "title": "Sin incident response plan ni runbook",
+          "severity": "medium",
+          "description": "Si manana se descubre una vulnerabilidad o un cliente reporta data loss, no hay un proceso documentado: quien escala, en cuanto tiempo, como comunicar. SOC 2 CC7.3 lo exige.",
+          "recommendation": "docs/INCIDENT_RESPONSE.md con severities (P0/P1/P2), tiempos de respuesta, on-call rotation, comunicacion. Runbooks separados por escenario (data loss, security breach, deepgram outage).",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://response.pagerduty.com/"
+          ]
         }
       ]
     },
@@ -1054,6 +1138,20 @@
             "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFPDPPP.pdf",
             "https://oag.ca.gov/privacy/ccpa"
           ]
+        },
+        {
+          "id": "LEG-008",
+          "title": "Sin DPA template firmable disponible",
+          "severity": "high",
+          "description": "GDPR Art. 28 requiere DPA firmado entre cliente (controller) y Maity (processor). Sin un template disponible para descarga/firma, cada cliente EU se atasca. Los competidores tienen DPA ready-to-sign en sus paginas legal.",
+          "recommendation": "docs/legal/DPA_TEMPLATE.md basado en EU SCCs Module 2 (Controller to Processor). Listar Maity como processor + sub-processors (Deepgram, OpenAI, etc). Process: cliente firma -> email a legal@maity.local -> contra-firma.",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://commission.europa.eu/law/law-topic/data-protection/international-dimension-data-protection/standard-contractual-clauses-scc_en"
+          ]
         }
       ]
     },
@@ -1149,6 +1247,48 @@
           "status": "pending",
           "references": [
             "https://www.producthunt.com/"
+          ]
+        },
+        {
+          "id": "BIZ-007",
+          "title": "Sin vendor security questionnaire pre-llenado",
+          "severity": "high",
+          "description": "Cada cliente enterprise envia un cuestionario de seguridad (SIG, CAIQ, custom) antes de firmar. Sin un doc pre-llenado, cada venta toma 2-4 semanas extra mientras se responden preguntas basicas (encryption at rest? data residency? incident response? sub-processors?).",
+          "recommendation": "Crear docs/SECURITY_QUESTIONNAIRE.md con respuestas pre-escritas a las 50 preguntas mas comunes (CAIQ Lite, SIG Lite). Mantener actualizado tras cada release.",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://cloudsecurityalliance.org/research/cloud-controls-matrix/"
+          ]
+        },
+        {
+          "id": "BIZ-008",
+          "title": "Sin MSA/SLA/DPA templates firmables",
+          "severity": "high",
+          "description": "Sin Master Service Agreement, Service Level Agreement, ni Data Processing Agreement listos para firmar, cada venta enterprise se atasca en negociacion legal. El cliente espera ver templates standar de la industria (no que les enviemos uno custom desde cero).",
+          "recommendation": "Crear docs/legal/MSA_TEMPLATE.md, SLA_TEMPLATE.md (99.5 percent uptime, RTO/RPO documentados), DPA_TEMPLATE.md (basado en SCCs EU). Hacerlos disponibles publicamente en /legal del sitio.",
+          "impact": 8,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://commission.europa.eu/law/law-topic/data-protection/international-dimension-data-protection/standard-contractual-clauses-scc_en"
+          ]
+        },
+        {
+          "id": "BIZ-009",
+          "title": "Sin pricing visible para enterprise",
+          "severity": "medium",
+          "description": "README solo lista BYOK gratis como modelo. Para B2B necesitamos al menos un Contact us for enterprise pricing con un formulario. Sin esto, los buyers asumen que no estamos listos para B2B y van a Otter.",
+          "recommendation": "Pagina web /pricing con tres tiers: Free (BYOK), Pro Cloud, Enterprise (contact). Formulario con campos basicos (compania, employees, use case).",
+          "impact": 7,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://www.priceintelligently.com/blog/saas-pricing-models"
           ]
         }
       ]
@@ -1476,7 +1616,13 @@
         "PERF-004",
         "PERF-005",
         "PERF-006",
-        "PERF-007"
+        "PERF-007",
+        "BIZ-007",
+        "BIZ-008",
+        "BIZ-009",
+        "OPS-009",
+        "OPS-010",
+        "LEG-008"
       ]
     },
     "v3.0": {
@@ -1484,7 +1630,11 @@
       "items": [
         "SEC-004",
         "RUST-001",
-        "QA-002"
+        "QA-002",
+        "SEC-008",
+        "SEC-009",
+        "SEC-010",
+        "OPS-008"
       ]
     }
   }
