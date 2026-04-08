@@ -92,6 +92,11 @@ Cargo.lock
 nul
 .claude/settings.local.json
 
+# Python cache (assembly portal)
+scripts/__pycache__/
+**/__pycache__/
+*.pyc
+
 # Supabase CLI temp files
 supabase/.temp/
 
