@@ -1,18 +1,18 @@
+use anyhow::Result;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::mpsc;
-use anyhow::Result;
 
-use super::devices::AudioDevice;
 use super::buffer_pool::AudioBufferPool;
+use super::devices::AudioDevice;
 
 /// Device type for audio chunks
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DeviceType {
     Microphone,
     System,
-    Mixed,  // Combined mic+system for WAV recording only
+    Mixed, // Combined mic+system for WAV recording only
 }
 
 /// Audio chunk with metadata for processing
@@ -97,7 +97,7 @@ pub struct RecordingState {
     // Core recording state
     is_recording: AtomicBool,
     is_paused: AtomicBool,
-    is_reconnecting: AtomicBool,  // NEW: Attempting to reconnect to device
+    is_reconnecting: AtomicBool, // NEW: Attempting to reconnect to device
 
     // Audio devices
     microphone_device: Mutex<Option<Arc<AudioDevice>>>,
@@ -163,11 +163,16 @@ impl RecordingState {
     // Recording control
     pub fn start_recording(&self) -> Result<()> {
         self.is_recording.store(true, Ordering::SeqCst);
-        *self.recording_start.lock()
-            .map_err(|e| anyhow::anyhow!("recording_start lock poisoned: {e}"))? = Some(Instant::now());
+        *self
+            .recording_start
+            .lock()
+            .map_err(|e| anyhow::anyhow!("recording_start lock poisoned: {e}"))? =
+            Some(Instant::now());
         self.error_count.store(0, Ordering::SeqCst);
         self.recoverable_error_count.store(0, Ordering::SeqCst);
-        *self.last_error.lock()
+        *self
+            .last_error
+            .lock()
             .map_err(|e| anyhow::anyhow!("last_error lock poisoned: {e}"))? = None;
         Ok(())
     }
@@ -178,27 +183,37 @@ impl RecordingState {
         // Clear pause tracking when stopping
         match self.pause_start.lock() {
             Ok(mut guard) => *guard = None,
-            Err(e) => { log::error!("pause_start lock poisoned in stop_recording: {e}"); }
+            Err(e) => {
+                log::error!("pause_start lock poisoned in stop_recording: {e}");
+            }
         }
         // CRITICAL: Clear audio sender to close the pipeline channel
         // This ensures the pipeline loop exits properly after processing all chunks
         match self.audio_sender.lock() {
             Ok(mut guard) => *guard = None,
-            Err(e) => { log::error!("audio_sender lock poisoned in stop_recording: {e}"); }
+            Err(e) => {
+                log::error!("audio_sender lock poisoned in stop_recording: {e}");
+            }
         }
         // CRITICAL: Clear device references to release microphone/speaker
         // Without this, Arc<AudioDevice> references persist and keep the mic active
         match self.microphone_device.lock() {
             Ok(mut guard) => *guard = None,
-            Err(e) => { log::error!("microphone_device lock poisoned in stop_recording: {e}"); }
+            Err(e) => {
+                log::error!("microphone_device lock poisoned in stop_recording: {e}");
+            }
         }
         match self.system_device.lock() {
             Ok(mut guard) => *guard = None,
-            Err(e) => { log::error!("system_device lock poisoned in stop_recording: {e}"); }
+            Err(e) => {
+                log::error!("system_device lock poisoned in stop_recording: {e}");
+            }
         }
         match self.disconnected_device.lock() {
             Ok(mut guard) => *guard = None,
-            Err(e) => { log::error!("disconnected_device lock poisoned in stop_recording: {e}"); }
+            Err(e) => {
+                log::error!("disconnected_device lock poisoned in stop_recording: {e}");
+            }
         }
         log::info!("Recording stopped, device references cleared");
     }
@@ -212,7 +227,9 @@ impl RecordingState {
         }
 
         self.is_paused.store(true, Ordering::SeqCst);
-        *self.pause_start.lock()
+        *self
+            .pause_start
+            .lock()
             .map_err(|e| anyhow::anyhow!("pause_start lock poisoned: {e}"))? = Some(Instant::now());
         log::info!("Recording paused");
         Ok(())
@@ -227,12 +244,22 @@ impl RecordingState {
         }
 
         // Calculate pause duration and add to total
-        if let Some(pause_start) = self.pause_start.lock()
-            .map_err(|e| anyhow::anyhow!("pause_start lock poisoned: {e}"))?.take() {
+        if let Some(pause_start) = self
+            .pause_start
+            .lock()
+            .map_err(|e| anyhow::anyhow!("pause_start lock poisoned: {e}"))?
+            .take()
+        {
             let pause_duration = pause_start.elapsed();
-            *self.total_pause_duration.lock()
-                .map_err(|e| anyhow::anyhow!("total_pause_duration lock poisoned: {e}"))? += pause_duration;
-            log::info!("Recording resumed after pause of {:.2}s", pause_duration.as_secs_f64());
+            *self
+                .total_pause_duration
+                .lock()
+                .map_err(|e| anyhow::anyhow!("total_pause_duration lock poisoned: {e}"))? +=
+                pause_duration;
+            log::info!(
+                "Recording resumed after pause of {:.2}s",
+                pause_duration.as_secs_f64()
+            );
         }
 
         self.is_paused.store(false, Ordering::SeqCst);
@@ -282,8 +309,8 @@ impl RecordingState {
         // Use compare_exchange to atomically check and set the flag
         // This prevents race conditions where multiple threads try to start reconnecting
         match self.is_reconnecting.compare_exchange(
-            false,  // expected: not currently reconnecting
-            true,   // new value: now reconnecting
+            false, // expected: not currently reconnecting
+            true,  // new value: now reconnecting
             Ordering::SeqCst,
             Ordering::SeqCst,
         ) {
@@ -291,7 +318,9 @@ impl RecordingState {
                 // Successfully claimed the reconnection lock
                 match self.disconnected_device.lock() {
                     Ok(mut guard) => *guard = Some((device, device_type)),
-                    Err(e) => log::error!("disconnected_device lock poisoned in start_reconnecting: {e}"),
+                    Err(e) => {
+                        log::error!("disconnected_device lock poisoned in start_reconnecting: {e}")
+                    }
                 }
                 log::info!("Started reconnection attempt for device");
                 true
@@ -318,7 +347,10 @@ impl RecordingState {
     }
 
     pub fn get_disconnected_device(&self) -> Option<(Arc<AudioDevice>, DeviceType)> {
-        self.disconnected_device.lock().ok().and_then(|guard| guard.clone())
+        self.disconnected_device
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
     }
 
     // Device management
@@ -337,11 +369,17 @@ impl RecordingState {
     }
 
     pub fn get_microphone_device(&self) -> Option<Arc<AudioDevice>> {
-        self.microphone_device.lock().ok().and_then(|guard| guard.clone())
+        self.microphone_device
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
     }
 
     pub fn get_system_device(&self) -> Option<Arc<AudioDevice>> {
-        self.system_device.lock().ok().and_then(|guard| guard.clone())
+        self.system_device
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
     }
 
     // Audio pipeline management
@@ -358,10 +396,14 @@ impl RecordingState {
             return Ok(()); // Silently discard chunks while paused
         }
 
-        let sender_guard = self.audio_sender.lock()
+        let sender_guard = self
+            .audio_sender
+            .lock()
             .map_err(|e| anyhow::anyhow!("audio_sender lock poisoned: {e}"))?;
         if let Some(sender) = sender_guard.as_ref() {
-            sender.send(chunk).map_err(|_| anyhow::anyhow!("Failed to send audio chunk"))?;
+            sender
+                .send(chunk)
+                .map_err(|_| anyhow::anyhow!("Failed to send audio chunk"))?;
             drop(sender_guard); // Release lock before acquiring stats lock
 
             // Update statistics
@@ -372,7 +414,9 @@ impl RecordingState {
             Ok(())
         } else {
             // Return an error when no sender is available (pipeline not ready)
-            Err(anyhow::anyhow!("Audio pipeline not ready - no sender available"))
+            Err(anyhow::anyhow!(
+                "Audio pipeline not ready - no sender available"
+            ))
         }
     }
 
@@ -394,10 +438,17 @@ impl RecordingState {
         // Track recoverable vs non-recoverable errors separately
         if error.is_recoverable() {
             let recoverable_count = self.recoverable_error_count.fetch_add(1, Ordering::SeqCst) + 1;
-            log::warn!("Recoverable audio error ({}): {:?}", recoverable_count, error);
+            log::warn!(
+                "Recoverable audio error ({}): {:?}",
+                recoverable_count,
+                error
+            );
 
             if recoverable_count >= 10 {
-                log::error!("Too many recoverable errors ({}), will stop recording", recoverable_count);
+                log::error!(
+                    "Too many recoverable errors ({}), will stop recording",
+                    recoverable_count
+                );
                 should_stop = true;
             }
         } else {
@@ -407,7 +458,10 @@ impl RecordingState {
 
         // Fallback: stop recording after too many total errors
         if count >= 15 {
-            log::error!("Too many total audio errors ({}), will stop recording", count);
+            log::error!(
+                "Too many total audio errors ({}), will stop recording",
+                count
+            );
             should_stop = true;
         }
 
@@ -464,13 +518,17 @@ impl RecordingState {
 
     // Statistics
     pub fn get_stats(&self) -> RecordingStats {
-        self.stats.lock().ok()
+        self.stats
+            .lock()
+            .ok()
             .map(|guard| guard.clone())
             .unwrap_or_default()
     }
 
     pub fn get_recording_duration(&self) -> Option<f64> {
-        self.recording_start.lock().ok()
+        self.recording_start
+            .lock()
+            .ok()
             .and_then(|guard| guard.map(|start| start.elapsed().as_secs_f64()))
     }
 
@@ -479,7 +537,9 @@ impl RecordingState {
         let total_duration = start.elapsed().as_secs_f64();
         let pause_duration = self.get_total_pause_duration();
         let current_pause = if self.is_paused() {
-            self.pause_start.lock().ok()
+            self.pause_start
+                .lock()
+                .ok()
                 .and_then(|guard| guard.map(|p| p.elapsed().as_secs_f64()))
                 .unwrap_or(0.0)
         } else {
@@ -489,14 +549,18 @@ impl RecordingState {
     }
 
     pub fn get_total_pause_duration(&self) -> f64 {
-        self.total_pause_duration.lock().ok()
+        self.total_pause_duration
+            .lock()
+            .ok()
             .map(|guard| guard.as_secs_f64())
             .unwrap_or(0.0)
     }
 
     pub fn get_current_pause_duration(&self) -> Option<f64> {
         if self.is_paused() {
-            self.pause_start.lock().ok()
+            self.pause_start
+                .lock()
+                .ok()
                 .and_then(|guard| guard.map(|start| start.elapsed().as_secs_f64()))
         } else {
             None
@@ -532,7 +596,11 @@ impl RecordingState {
         clear_lock!(self.stats, RecordingStats::default(), "stats");
         clear_lock!(self.recording_start, None, "recording_start");
         clear_lock!(self.pause_start, None, "pause_start");
-        clear_lock!(self.total_pause_duration, std::time::Duration::ZERO, "total_pause_duration");
+        clear_lock!(
+            self.total_pause_duration,
+            std::time::Duration::ZERO,
+            "total_pause_duration"
+        );
         self.error_count.store(0, Ordering::SeqCst);
         self.recoverable_error_count.store(0, Ordering::SeqCst);
 

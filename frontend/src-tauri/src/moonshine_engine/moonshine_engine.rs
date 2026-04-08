@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::io::{AsyncWriteExt, BufWriter};
-use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 
@@ -15,9 +15,14 @@ use tokio::time::timeout;
 pub enum ModelStatus {
     Available,
     Missing,
-    Downloading { progress: u8 },
+    Downloading {
+        progress: u8,
+    },
     Error(String),
-    Corrupted { file_size: u64, expected_min_size: u64 },
+    Corrupted {
+        file_size: u64,
+        expected_min_size: u64,
+    },
 }
 
 /// Detailed download progress info (MB-based with speed)
@@ -61,10 +66,10 @@ pub struct ModelInfo {
     pub name: String,
     pub path: PathBuf,
     pub size_mb: u32,
-    pub speed: String,     // Performance description
+    pub speed: String, // Performance description
     pub status: ModelStatus,
     pub description: String,
-    pub language: String,  // Supported language (e.g., "es" for Spanish)
+    pub language: String, // Supported language (e.g., "es" for Spanish)
 }
 
 #[derive(Debug)]
@@ -82,7 +87,9 @@ impl std::fmt::Display for MoonshineEngineError {
         match self {
             MoonshineEngineError::ModelNotLoaded => write!(f, "No Moonshine model loaded"),
             MoonshineEngineError::ModelNotFound(name) => write!(f, "Model '{}' not found", name),
-            MoonshineEngineError::TranscriptionFailed(err) => write!(f, "Transcription failed: {}", err),
+            MoonshineEngineError::TranscriptionFailed(err) => {
+                write!(f, "Transcription failed: {}", err)
+            }
             MoonshineEngineError::DownloadFailed(err) => write!(f, "Download failed: {}", err),
             MoonshineEngineError::IoError(err) => write!(f, "IO error: {}", err),
             MoonshineEngineError::Other(err) => write!(f, "Error: {}", err),
@@ -132,7 +139,10 @@ impl MoonshineEngine {
             }
         };
 
-        log::info!("MoonshineEngine using models directory: {}", models_dir.display());
+        log::info!(
+            "MoonshineEngine using models directory: {}",
+            models_dir.display()
+        );
 
         // Create directory if it doesn't exist
         if !models_dir.exists() {
@@ -156,9 +166,13 @@ impl MoonshineEngine {
 
         // Moonshine model configurations
         // moonshine-base is an English-only model for ultra-fast transcription
-        let model_configs = [
-            ("moonshine-base", 250, "Ultra Fast", "en", "Ultra-fast English model for real-time transcription"),
-        ];
+        let model_configs = [(
+            "moonshine-base",
+            250,
+            "Ultra Fast",
+            "en",
+            "Ultra-fast English model for real-time transcription",
+        )];
 
         // Get active downloads to override status
         let active_downloads = self.active_downloads.read().await;
@@ -180,9 +194,9 @@ impl MoonshineEngine {
                     "tokenizer.json",
                 ];
 
-                let all_files_exist = required_files.iter().all(|file| {
-                    model_path.join(file).exists()
-                });
+                let all_files_exist = required_files
+                    .iter()
+                    .all(|file| model_path.join(file).exists());
 
                 if all_files_exist {
                     // Validate model by checking file sizes
@@ -255,8 +269,8 @@ impl MoonshineEngine {
         // Define minimum file sizes (80% of expected to allow some variance)
         // moonshine-base ONNX files: encoder ~81MB, decoder ~158MB, decoder_with_past ~147MB, tokenizer ~4KB
         let expected_sizes: Vec<(&str, u64)> = vec![
-            ("encoder_model.onnx", 65_000_000),           // ~81 MB, min 65 MB
-            ("decoder_model.onnx", 130_000_000),          // ~158 MB, min 130 MB
+            ("encoder_model.onnx", 65_000_000),            // ~81 MB, min 65 MB
+            ("decoder_model.onnx", 130_000_000),           // ~158 MB, min 130 MB
             ("decoder_with_past_model.onnx", 120_000_000), // ~147 MB, min 120 MB
             ("tokenizer.json", 1_000),                     // ~4 KB, min 1 KB
         ];
@@ -308,11 +322,14 @@ impl MoonshineEngine {
                 );
 
                 // List and remove all files in the directory
-                let mut entries = fs::read_dir(model_dir).await
+                let mut entries = fs::read_dir(model_dir)
+                    .await
                     .map_err(|e| anyhow!("Failed to read model directory: {}", e))?;
 
                 let mut removed_count = 0;
-                while let Some(entry) = entries.next_entry().await
+                while let Some(entry) = entries
+                    .next_entry()
+                    .await
                     .map_err(|e| anyhow!("Failed to read directory entry: {}", e))?
                 {
                     let path = entry.path();
@@ -329,7 +346,10 @@ impl MoonshineEngine {
                     }
                 }
 
-                log::info!("Cleaned {} incomplete files from model directory", removed_count);
+                log::info!(
+                    "Cleaned {} incomplete files from model directory",
+                    removed_count
+                );
                 Ok(())
             }
         }
@@ -347,12 +367,19 @@ impl MoonshineEngine {
                 // Check if this model is already loaded
                 if let Some(current_model) = self.current_model_name.read().await.as_ref() {
                     if current_model == model_name {
-                        log::info!("Moonshine model {} is already loaded, skipping reload", model_name);
+                        log::info!(
+                            "Moonshine model {} is already loaded, skipping reload",
+                            model_name
+                        );
                         return Ok(());
                     }
 
                     // Unload current model before loading new one
-                    log::info!("Unloading current Moonshine model '{}' before loading '{}'", current_model, model_name);
+                    log::info!(
+                        "Unloading current Moonshine model '{}' before loading '{}'",
+                        current_model,
+                        model_name
+                    );
                     self.unload_model().await;
                 }
 
@@ -366,24 +393,23 @@ impl MoonshineEngine {
                 *self.current_model.write().await = Some(model);
                 *self.current_model_name.write().await = Some(model_name.to_string());
 
-                log::info!(
-                    "Successfully loaded Moonshine model: {}",
-                    model_name
-                );
+                log::info!("Successfully loaded Moonshine model: {}", model_name);
                 Ok(())
             }
             ModelStatus::Missing => {
                 Err(anyhow!("Moonshine model {} is not downloaded", model_name))
             }
-            ModelStatus::Downloading { .. } => {
-                Err(anyhow!("Moonshine model {} is currently downloading", model_name))
-            }
+            ModelStatus::Downloading { .. } => Err(anyhow!(
+                "Moonshine model {} is currently downloading",
+                model_name
+            )),
             ModelStatus::Error(ref err) => {
                 Err(anyhow!("Moonshine model {} has error: {}", model_name, err))
             }
-            ModelStatus::Corrupted { .. } => {
-                Err(anyhow!("Moonshine model {} is corrupted and cannot be loaded", model_name))
-            }
+            ModelStatus::Corrupted { .. } => Err(anyhow!(
+                "Moonshine model {} is corrupted and cannot be loaded",
+                model_name
+            )),
         }
     }
 
@@ -450,9 +476,14 @@ impl MoonshineEngine {
             models.get(model_name).cloned()
         };
 
-        let model_info = model_info.ok_or_else(|| anyhow!("Moonshine model '{}' not found", model_name))?;
+        let model_info =
+            model_info.ok_or_else(|| anyhow!("Moonshine model '{}' not found", model_name))?;
 
-        log::info!("Moonshine model '{}' has status: {:?}", model_name, model_info.status);
+        log::info!(
+            "Moonshine model '{}' has status: {:?}",
+            model_name,
+            model_info.status
+        );
 
         // Allow deletion of corrupted or available models
         match &model_info.status {
@@ -493,11 +524,13 @@ impl MoonshineEngine {
         progress_callback: Option<Box<dyn Fn(u8) + Send>>,
     ) -> Result<()> {
         // Wrap simple callback to use detailed version
-        let detailed_callback: Option<Box<dyn Fn(DownloadProgress) + Send>> =
-            progress_callback.map(|cb| {
-                Box::new(move |p: DownloadProgress| cb(p.percent)) as Box<dyn Fn(DownloadProgress) + Send>
+        let detailed_callback: Option<Box<dyn Fn(DownloadProgress) + Send>> = progress_callback
+            .map(|cb| {
+                Box::new(move |p: DownloadProgress| cb(p.percent))
+                    as Box<dyn Fn(DownloadProgress) + Send>
             });
-        self.download_model_detailed(model_name, detailed_callback).await
+        self.download_model_detailed(model_name, detailed_callback)
+            .await
     }
 
     /// Download a Moonshine model with detailed progress (MB/speed/resume support)
@@ -512,8 +545,14 @@ impl MoonshineEngine {
         {
             let active = self.active_downloads.read().await;
             if active.contains(model_name) {
-                log::warn!("Download already in progress for Moonshine model: {}", model_name);
-                return Err(anyhow!("Download already in progress for model: {}", model_name));
+                log::warn!(
+                    "Download already in progress for Moonshine model: {}",
+                    model_name
+                );
+                return Err(anyhow!(
+                    "Download already in progress for model: {}",
+                    model_name
+                ));
             }
         }
 
@@ -553,7 +592,8 @@ impl MoonshineEngine {
 
         // HuggingFace base URL for Moonshine models
         // moonshine-base ONNX is at: https://huggingface.co/onnx-community/moonshine-base-ONNX
-        let base_url = "https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/main/onnx";
+        let base_url =
+            "https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/main/onnx";
 
         // Files to download
         // Using separate decoder models instead of merged to avoid MatMul errors
@@ -563,7 +603,8 @@ impl MoonshineEngine {
             "decoder_with_past_model.onnx",
         ];
         // tokenizer.json is at a different path
-        let tokenizer_url = "https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/main/tokenizer.json";
+        let tokenizer_url =
+            "https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/main/tokenizer.json";
 
         // Create model directory
         let model_dir = &model_info.path;
@@ -598,7 +639,10 @@ impl MoonshineEngine {
             ("decoder_model.onnx", 158_000_000u64),
             ("decoder_with_past_model.onnx", 147_000_000u64),
             ("tokenizer.json", 4_000u64),
-        ].iter().cloned().collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         let total_size_bytes: u64 = file_sizes.values().sum();
         let mut total_downloaded: u64 = 0;
@@ -613,7 +657,10 @@ impl MoonshineEngine {
         let all_files: Vec<(&str, String)> = files_to_download
             .iter()
             .map(|f| (*f, format!("{}/{}", base_url, f)))
-            .chain(std::iter::once(("tokenizer.json", tokenizer_url.to_string())))
+            .chain(std::iter::once((
+                "tokenizer.json",
+                tokenizer_url.to_string(),
+            )))
             .collect();
 
         for (filename, file_url) in &all_files {
@@ -632,18 +679,25 @@ impl MoonshineEngine {
 
             log::info!("Downloading: {}", filename);
 
-            let response = client.get(file_url).send().await
+            let response = client
+                .get(file_url)
+                .send()
+                .await
                 .map_err(|e| anyhow!("Failed to start download for {}: {}", filename, e))?;
 
             if !response.status().is_success() {
                 let mut active = self.active_downloads.write().await;
                 active.remove(model_name);
-                return Err(anyhow!("Download failed for {} with status: {}", filename, response.status()));
+                return Err(anyhow!(
+                    "Download failed for {} with status: {}",
+                    filename,
+                    response.status()
+                ));
             }
 
-            let file_total_size = response.content_length().unwrap_or(
-                *file_sizes.get(*filename).unwrap_or(&0)
-            );
+            let file_total_size = response
+                .content_length()
+                .unwrap_or(*file_sizes.get(*filename).unwrap_or(&0));
 
             let file = fs::File::create(&file_path)
                 .await
@@ -677,21 +731,21 @@ impl MoonshineEngine {
                         let _ = writer.flush().await;
                         let mut active = self.active_downloads.write().await;
                         active.remove(model_name);
-                        return Err(anyhow!("Download timeout - No data received for 30 seconds"));
-                    },
-                    Ok(None) => break,
-                    Ok(Some(chunk_result)) => {
-                        match chunk_result {
-                            Ok(c) => c,
-                            Err(e) => {
-                                log::error!("Download error for {}: {:?}", model_name, e);
-                                let _ = writer.flush().await;
-                                let mut active = self.active_downloads.write().await;
-                                active.remove(model_name);
-                                return Err(anyhow!("Download error: {}", e));
-                            }
-                        }
+                        return Err(anyhow!(
+                            "Download timeout - No data received for 30 seconds"
+                        ));
                     }
+                    Ok(None) => break,
+                    Ok(Some(chunk_result)) => match chunk_result {
+                        Ok(c) => c,
+                        Err(e) => {
+                            log::error!("Download error for {}: {:?}", model_name, e);
+                            let _ = writer.flush().await;
+                            let mut active = self.active_downloads.write().await;
+                            active.remove(model_name);
+                            return Err(anyhow!("Download error: {}", e));
+                        }
+                    },
                 };
 
                 if let Err(e) = writer.write_all(&chunk).await {
@@ -717,7 +771,8 @@ impl MoonshineEngine {
 
                 if progress_changed || time_threshold {
                     let speed_mbps = if elapsed_since_report.as_secs_f64() >= 0.1 {
-                        (bytes_since_last_report as f64 / (1024.0 * 1024.0)) / elapsed_since_report.as_secs_f64()
+                        (bytes_since_last_report as f64 / (1024.0 * 1024.0))
+                            / elapsed_since_report.as_secs_f64()
                     } else {
                         let total_elapsed = download_start_time.elapsed().as_secs_f64();
                         if total_elapsed > 0.0 {
@@ -731,7 +786,8 @@ impl MoonshineEngine {
                     last_report_time = Instant::now();
                     bytes_since_last_report = 0;
 
-                    let progress = DownloadProgress::new(total_downloaded, total_size_bytes, speed_mbps);
+                    let progress =
+                        DownloadProgress::new(total_downloaded, total_size_bytes, speed_mbps);
                     if let Some(ref callback) = progress_callback {
                         callback(progress);
                     }
@@ -740,7 +796,9 @@ impl MoonshineEngine {
                     {
                         let mut models = self.available_models.write().await;
                         if let Some(model) = models.get_mut(model_name) {
-                            model.status = ModelStatus::Downloading { progress: overall_progress };
+                            model.status = ModelStatus::Downloading {
+                                progress: overall_progress,
+                            };
                         }
                     }
                 }
@@ -752,7 +810,11 @@ impl MoonshineEngine {
                 return Err(anyhow!("Failed to flush file {}: {}", filename, e));
             }
 
-            log::info!("Completed download: {} ({:.2} MB)", filename, file_downloaded as f64 / 1_048_576.0);
+            log::info!(
+                "Completed download: {} ({:.2} MB)",
+                filename,
+                file_downloaded as f64 / 1_048_576.0
+            );
         }
 
         // Report 100% progress
@@ -826,7 +888,10 @@ impl MoonshineEngine {
             if let Err(e) = fs::remove_dir_all(&model_path).await {
                 log::warn!("Failed to clean up cancelled download directory: {}", e);
             } else {
-                log::info!("Cleaned up cancelled download directory: {}", model_path.display());
+                log::info!(
+                    "Cleaned up cancelled download directory: {}",
+                    model_path.display()
+                );
             }
         }
 

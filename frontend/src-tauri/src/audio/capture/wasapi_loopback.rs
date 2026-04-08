@@ -8,19 +8,17 @@
 
 #![cfg(target_os = "windows")]
 
-use windows::{
-    Win32::{
-        Foundation::{HANDLE, CloseHandle, WAIT_OBJECT_0},
-        Media::Audio::*,
-        System::Com::*,
-        System::Threading::{CreateEventW, WaitForSingleObject},
-    },
+use windows::Win32::{
+    Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0},
+    Media::Audio::*,
+    System::Com::*,
+    System::Threading::{CreateEventW, WaitForSingleObject},
 };
 
 use anyhow::{anyhow, Result};
 use futures_channel::mpsc;
 use futures_util::{Stream, StreamExt};
-use log::{info, error, debug};
+use log::{debug, error, info};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -42,7 +40,9 @@ impl ComRuntime {
 
 impl Drop for ComRuntime {
     fn drop(&mut self) {
-        unsafe { CoUninitialize(); }
+        unsafe {
+            CoUninitialize();
+        }
     }
 }
 
@@ -101,23 +101,24 @@ impl WasapiLoopbackCapture {
 
         unsafe {
             // 1. Crear enumerador de dispositivos
-            let enumerator: IMMDeviceEnumerator = CoCreateInstance(
-                &MMDeviceEnumerator,
-                None,
-                CLSCTX_ALL,
-            ).map_err(|e| anyhow!("Failed to create device enumerator: {:?}", e))?;
+            let enumerator: IMMDeviceEnumerator =
+                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+                    .map_err(|e| anyhow!("Failed to create device enumerator: {:?}", e))?;
 
             // 2. Obtener dispositivo de salida por defecto (para loopback)
-            let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole)
+            let device = enumerator
+                .GetDefaultAudioEndpoint(eRender, eConsole)
                 .map_err(|e| anyhow!("No default output device for loopback: {:?}", e))?;
 
             info!("🎧 WASAPI loopback: Found default output device");
 
             // 3. Obtener formato de audio del dispositivo
-            let audio_client: IAudioClient = device.Activate(CLSCTX_ALL, None)
+            let audio_client: IAudioClient = device
+                .Activate(CLSCTX_ALL, None)
                 .map_err(|e| anyhow!("Failed to activate audio client: {:?}", e))?;
 
-            let format_ptr = audio_client.GetMixFormat()
+            let format_ptr = audio_client
+                .GetMixFormat()
                 .map_err(|e| anyhow!("Failed to get mix format: {:?}", e))?;
 
             let format = &*format_ptr;
@@ -127,7 +128,10 @@ impl WasapiLoopbackCapture {
             // Liberar formato
             CoTaskMemFree(Some(format_ptr as *const _ as *const _));
 
-            info!("✅ WASAPI loopback initialized: {}Hz, {} channels", sample_rate, channels);
+            info!(
+                "✅ WASAPI loopback initialized: {}Hz, {} channels",
+                sample_rate, channels
+            );
 
             Ok(Self {
                 _com: com,
@@ -190,11 +194,8 @@ fn capture_loop(
             .map_err(|e| anyhow!("COM init failed in capture thread: {:?}", e))?;
 
         // Obtener dispositivo de salida
-        let enumerator: IMMDeviceEnumerator = CoCreateInstance(
-            &MMDeviceEnumerator,
-            None,
-            CLSCTX_ALL,
-        )?;
+        let enumerator: IMMDeviceEnumerator =
+            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
 
         let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole)?;
 
@@ -209,7 +210,10 @@ fn capture_loop(
         let sample_rate = format.nSamplesPerSec;
         let bits_per_sample = format.wBitsPerSample;
 
-        debug!("🎧 WASAPI capture: {}Hz, {} ch, {} bits", sample_rate, channels, bits_per_sample);
+        debug!(
+            "🎧 WASAPI capture: {}Hz, {} ch, {} bits",
+            sample_rate, channels, bits_per_sample
+        );
 
         // Duración del buffer: 100ms en unidades de 100 nanosegundos
         let buffer_duration: i64 = 1_000_000; // 100ms
@@ -217,14 +221,16 @@ fn capture_loop(
         // Inicializar con flag LOOPBACK
         // IMPORTANTE: Debe ser SHARED mode para loopback
         // Si Initialize() falla, format_guard se dropea automáticamente y libera memoria
-        audio_client.Initialize(
-            AUDCLNT_SHAREMODE_SHARED,
-            AUDCLNT_STREAMFLAGS_LOOPBACK,
-            buffer_duration,
-            0,
-            format_guard.as_ptr(),
-            None,
-        ).map_err(|e| anyhow!("Failed to initialize loopback: {:?}", e))?;
+        audio_client
+            .Initialize(
+                AUDCLNT_SHAREMODE_SHARED,
+                AUDCLNT_STREAMFLAGS_LOOPBACK,
+                buffer_duration,
+                0,
+                format_guard.as_ptr(),
+                None,
+            )
+            .map_err(|e| anyhow!("Failed to initialize loopback: {:?}", e))?;
 
         // Obtener capture client
         let capture_client: IAudioCaptureClient = audio_client.GetService()?;
@@ -272,13 +278,10 @@ fn capture_loop(
                 let mut frames_available = 0u32;
                 let mut flags = 0u32;
 
-                if capture_client.GetBuffer(
-                    &mut data_ptr,
-                    &mut frames_available,
-                    &mut flags,
-                    None,
-                    None,
-                ).is_err() {
+                if capture_client
+                    .GetBuffer(&mut data_ptr, &mut frames_available, &mut flags, None, None)
+                    .is_err()
+                {
                     break;
                 }
 
