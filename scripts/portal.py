@@ -257,6 +257,60 @@ async def api_consult(finding_id: str):
     return JSONResponse(consult_finding(finding_id.upper()))
 
 
+@app.get("/api/activity")
+async def api_activity():
+    """Devuelve resumen estructurado de actividad reciente desde IMPROVEMENT_LOG y git log."""
+    log_file = MEMORY_DIR / "IMPROVEMENT_LOG.md"
+    entries = []
+    if log_file.exists():
+        text = log_file.read_text(encoding="utf-8")
+        # Parse markdown sections starting with "### YYYY-MM-DD"
+        chunks = re.split(r"\n### ", text)
+        for chunk in chunks[1:]:  # skip header
+            lines = chunk.split("\n")
+            header = lines[0].strip()
+            body = {}
+            for line in lines[1:]:
+                m = re.match(r"- \*\*([^*]+):\*\* (.+)", line)
+                if m:
+                    body[m.group(1).strip()] = m.group(2).strip()
+            entries.append({"header": header, "body": body})
+
+    # Git log of last 15 commits
+    commits = []
+    try:
+        result = subprocess.run(
+            ["git", "log", "-15", "--format=%h|%ai|%an|%s"],
+            cwd=ROOT, capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.strip().split("\n"):
+            parts = line.split("|", 3)
+            if len(parts) == 4:
+                commits.append({"hash": parts[0], "date": parts[1], "author": parts[2], "subject": parts[3]})
+    except Exception:
+        pass
+
+    # Open PRs from gh CLI (best-effort, may be slow)
+    prs = []
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "list", "--repo", "ponchovillalobos/maity_desktop-1", "--state", "open",
+             "--json", "number,title,headRefName,state,url,createdAt"],
+            capture_output=True, text=True, timeout=8,
+        )
+        if result.returncode == 0:
+            prs = json.loads(result.stdout)
+    except Exception:
+        pass
+
+    return JSONResponse({
+        "entries": entries,
+        "commits": commits,
+        "prs": prs,
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
 @app.get("/api/memory")
 async def api_memory():
     files = ["IMPROVEMENT_LOG.md", "FAILED_ATTEMPTS.md", "METRICS_HISTORY.md", "ANALYSIS_STATE.md"]
@@ -438,6 +492,11 @@ main p.lead { margin:0 0 18px; color:var(--muted); font-size:13px; }
 .refresh-btn { background:var(--card); border:1px solid var(--border); color:var(--fg);
   padding:6px 14px; border-radius:6px; font-size:12px; cursor:pointer; }
 .refresh-btn:hover { background:var(--accent); border-color:var(--accent); }
+
+.refresh-banner { background:linear-gradient(90deg, rgba(39,174,96,0.15), rgba(39,174,96,0.05));
+  border:1px solid rgba(39,174,96,0.4); border-radius:8px; padding:8px 14px;
+  font-size:11px; color:#2ecc71; margin-bottom:18px; display:flex; align-items:center;
+  gap:8px; font-weight:600; letter-spacing:0.3px; }
 </style>
 </head>
 <body>
@@ -449,6 +508,7 @@ main p.lead { margin:0 0 18px; color:var(--muted); font-size:13px; }
     </div>
     <nav>
       <button class="active" data-view="assembly">📋 Asamblea</button>
+      <button data-view="activity">📰 Actividad</button>
       <button data-view="roadmap">🗺️ Roadmap</button>
       <button data-view="dashboard">📈 Dashboard</button>
       <button data-view="memory">🧠 Memoria</button>
@@ -472,16 +532,41 @@ let DATA = null;
 let METRICS = null;
 let FILTERS = { search:'', expert:'all', severity:'all', phase:'all', status:'all' };
 
-async function loadAll() {
+let CURRENT_VIEW = 'assembly';
+let LAST_UPDATE = null;
+
+async function loadAll(silent=false) {
   const [d, m] = await Promise.all([
-    fetch('/api/findings').then(r => r.json()),
-    fetch('/api/metrics').then(r => r.json()),
+    fetch('/api/findings?_=' + Date.now()).then(r => r.json()),
+    fetch('/api/metrics?_=' + Date.now()).then(r => r.json()),
   ]);
   DATA = d; METRICS = m;
+  LAST_UPDATE = new Date();
   document.getElementById('footer-info').innerHTML =
-    `Branch: <b>${m.git.branch || '?'}</b><br>Commit: ${(m.git.last_commit||'').slice(0,40)}<br>v${d.project.version}`;
-  show('assembly');
+    `Branch: <b>${m.git.branch || '?'}</b><br>Commit: ${(m.git.last_commit||'').slice(0,40)}<br>` +
+    `v${d.project.version} · iter ${d.iterations} · commits ${d.commits}`;
+  if (!silent) show(CURRENT_VIEW);
+  updateRefreshBanner();
 }
+
+function updateRefreshBanner() {
+  const banner = document.getElementById('refresh-banner');
+  if (!banner || !LAST_UPDATE) return;
+  const secs = Math.round((Date.now() - LAST_UPDATE.getTime()) / 1000);
+  banner.innerHTML = `🟢 Auto-refresh activo · última actualización hace ${secs}s · iter ${DATA.iterations} · commits ${DATA.commits} · ${DATA.experts && Object.keys(DATA.experts).length} expertos`;
+}
+
+// Auto-refresh cada 8 segundos
+setInterval(async () => {
+  try {
+    await loadAll(true);
+    // Re-render solo la vista actual sin perder filtros
+    show(CURRENT_VIEW);
+  } catch (e) { console.error('refresh error', e); }
+}, 8000);
+
+// Update banner timer cada segundo
+setInterval(updateRefreshBanner, 1000);
 
 function flat() {
   const out = [];
@@ -554,6 +639,7 @@ function findingCard(f) {
 }
 
 function show(view) {
+  CURRENT_VIEW = view;
   document.querySelectorAll('aside nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   const target = document.getElementById('view');
   if (view === 'assembly') target.innerHTML = renderAssembly();
@@ -561,6 +647,88 @@ function show(view) {
   else if (view === 'dashboard') { target.innerHTML = renderDashboard(); renderChart(); }
   else if (view === 'memory') renderMemory(target);
   else if (view === 'experts') target.innerHTML = renderExperts();
+  else if (view === 'activity') renderActivity(target);
+  // Inject refresh banner at top of every view
+  if (target.firstElementChild && target.firstElementChild.id !== 'refresh-banner-wrap') {
+    const wrap = document.createElement('div');
+    wrap.id = 'refresh-banner-wrap';
+    wrap.innerHTML = '<div id="refresh-banner" class="refresh-banner">cargando...</div>';
+    target.insertBefore(wrap, target.firstChild);
+    updateRefreshBanner();
+  }
+}
+
+async function renderActivity(target) {
+  target.innerHTML = '<h2>📰 Actividad reciente</h2><p class="lead">cargando...</p>';
+  const a = await fetch('/api/activity?_=' + Date.now()).then(r => r.json());
+  let html = `<h2>📰 Actividad reciente</h2><p class="lead">Timeline de iteraciones, commits y PRs. Generado a las ${a.generated_at}.</p>`;
+
+  // PRs abiertos
+  if (a.prs && a.prs.length) {
+    html += '<h3>🔗 Pull Requests abiertos en el fork</h3><div class="findings">';
+    for (const pr of a.prs) {
+      html += `<div class="finding"><div class="stripe" style="background:#3498db"></div><div class="body">
+        <header>
+          <span class="id">PR #${pr.number}</span>
+          <div class="title">${pr.title}</div>
+          <div class="badges"><span class="badge phase">OPEN</span></div>
+        </header>
+        <div class="section"><div class="lbl">Branch</div><div class="txt"><code>${pr.headRefName}</code></div></div>
+        <div class="section"><div class="lbl">Creado</div><div class="txt">${pr.createdAt}</div></div>
+        <div class="meta"><a href="${pr.url}" target="_blank" class="consult-btn">↗ Ver en GitHub</a></div>
+      </div></div>`;
+    }
+    html += '</div>';
+  }
+
+  // Iteraciones del IMPROVEMENT_LOG
+  if (a.entries && a.entries.length) {
+    html += '<h3>📋 Iteraciones registradas (IMPROVEMENT_LOG)</h3><div class="findings">';
+    for (const e of a.entries) {
+      const expSplit = (e.body['Experto'] || '').split(' ');
+      const ico = expSplit[0] || '📝';
+      const expName = expSplit.slice(1).join(' ');
+      const sev = (e.body['Severity'] || '').toLowerCase();
+      const sevColor = SEV_COLOR[sev] || '#3498db';
+      html += `<div class="finding"><div class="stripe" style="background:${sevColor}"></div><div class="body">
+        <header>
+          <div class="title">${ico} ${e.header}</div>
+          <div class="badges">
+            ${e.body['Phase'] ? `<span class="badge phase">${e.body['Phase']}</span>` : ''}
+            ${e.body['Estado'] ? `<span class="badge status-pending">${e.body['Estado']}</span>` : ''}
+          </div>
+        </header>
+        ${e.body['Título'] ? `<div class="section"><div class="lbl">Título</div><div class="txt">${e.body['Título']}</div></div>` : ''}
+        ${e.body['Branch'] ? `<div class="section"><div class="lbl">Branch</div><div class="txt"><code>${e.body['Branch']}</code></div></div>` : ''}
+        ${e.body['PR'] ? `<div class="section"><div class="lbl">Pull Request</div><div class="txt"><a href="${e.body['PR'].replace(/[<>]/g,'')}" target="_blank" style="color:#5dade2">${e.body['PR']}</a></div></div>` : ''}
+        ${e.body['Archivos'] ? `<div class="section"><div class="lbl">Archivos</div><div class="txt">${e.body['Archivos']}</div></div>` : ''}
+        ${e.body['Quality gates'] ? `<div class="section"><div class="lbl">Quality gates</div><div class="txt">${e.body['Quality gates']}</div></div>` : ''}
+        ${e.body['Consulta asamblea'] ? `<div class="section"><div class="lbl">Consulta asamblea</div><div class="txt">${e.body['Consulta asamblea']}</div></div>` : ''}
+        ${e.body['Cómo se detectó'] ? `<div class="section"><div class="lbl">Cómo se detectó</div><div class="txt">${e.body['Cómo se detectó']}</div></div>` : ''}
+        ${e.body['Notas'] ? `<div class="section"><div class="lbl">Notas</div><div class="txt">${e.body['Notas']}</div></div>` : ''}
+      </div></div>`;
+    }
+    html += '</div>';
+  }
+
+  // Commits recientes
+  if (a.commits && a.commits.length) {
+    html += '<h3>📝 Últimos commits del repo</h3><div class="dash-tile">';
+    for (const c of a.commits) {
+      html += `<div class="kv"><span><code>${c.hash}</code> <small style="color:var(--muted)">${c.date.slice(0,10)}</small> ${c.subject}</span><span class="v" style="font-size:10px">${c.author}</span></div>`;
+    }
+    html += '</div>';
+  }
+
+  target.innerHTML = html;
+  // Re-inject banner after async render
+  if (target.firstElementChild && target.firstElementChild.id !== 'refresh-banner-wrap') {
+    const wrap = document.createElement('div');
+    wrap.id = 'refresh-banner-wrap';
+    wrap.innerHTML = '<div id="refresh-banner" class="refresh-banner">cargando...</div>';
+    target.insertBefore(wrap, target.firstChild);
+    updateRefreshBanner();
+  }
 }
 
 function renderAssembly() {
