@@ -578,23 +578,47 @@ pub fn run() {
                 if let Err(e) = whisper_engine::commands::whisper_init().await {
                     log::error!("LOCAL-STT-DEFAULT: Whisper init failed: {}", e);
                 } else {
-                    // LOCAL-STT-DEFAULT (iter #31):
-                    // Default "small-q5_0" basado en docs/audit/LOCAL_MULTILINGUAL_STT_COMPARISON.md
-                    // Razones: 280 MB en disco, ~550 MB RAM inferencia, WER ~13-16% en es-419,
-                    // multilingüe nativo, ya registrado en model_configs, descarga rápida.
-                    // Mejor balance tamaño/calidad/velocidad para el target Intel i5 + 8-16GB.
-                    // El usuario puede cambiar a base (142MB mediocre) o large-v3-turbo-q5_0
-                    // (574MB excelente) desde Settings.
+                    // LOCAL-STT-DEFAULT (iter #31 fix b):
+                    // Default "base" (142 MB, f16, multilingual). Originalmente iba
+                    // a ser small-q5_0 pero el URL de huggingface
+                    // ggml-small-q5_0.bin retorna 404. base es garantizado
+                    // (está hospedado en ggerganov/whisper.cpp desde día 1).
+                    // Es multilingüe, soporta español decente (WER ~20-25%),
+                    // descarga rápida (142 MB) y corre cómodo en CPU Intel i5.
+                    // El usuario puede cambiar a small (466MB, mejor calidad) o
+                    // large-v3-turbo (809MB, excelente) desde Settings.
+                    //
+                    // IMPORTANTE: validar el nombre contra la lista de modelos Whisper
+                    // conocidos. Instalaciones legacy pueden tener basura en
+                    // Setting.whisper_model (ej. "deepgram" si el usuario cambió de
+                    // provider antes y el campo nunca se limpió).
+                    const VALID_WHISPER_MODELS: &[&str] = &[
+                        "tiny", "base", "small", "medium",
+                        "large-v3-turbo", "large-v3",
+                        "tiny-q5_0", "base-q5_0", "small-q5_0",
+                        "medium-q5_0", "large-v3-turbo-q5_0", "large-v3-q5_0",
+                    ];
                     let whisper_model_name = {
                         let state = app_handle_for_config.try_state::<crate::state::AppState>();
-                        if let Some(app_state) = state {
+                        let from_db = if let Some(app_state) = state {
                             let pool = app_state.db_manager.pool();
                             match crate::database::repositories::setting::SettingsRepository::get_model_config(pool).await {
-                                Ok(Some(cfg)) if !cfg.whisper_model.is_empty() => cfg.whisper_model.clone(),
-                                _ => "small-q5_0".to_string(),
+                                Ok(Some(cfg)) if !cfg.whisper_model.is_empty() => Some(cfg.whisper_model.clone()),
+                                _ => None,
                             }
                         } else {
-                            "small-q5_0".to_string()
+                            None
+                        };
+                        match from_db {
+                            Some(name) if VALID_WHISPER_MODELS.contains(&name.as_str()) => name,
+                            Some(invalid) => {
+                                log::warn!(
+                                    "LOCAL-STT-DEFAULT: DB has invalid whisper_model='{}' (legacy/corrupt), falling back to small-q5_0",
+                                    invalid
+                                );
+                                "base".to_string()
+                            }
+                            None => "base".to_string(),
                         }
                     };
                     log::info!("LOCAL-STT-DEFAULT: using Whisper model '{}'", whisper_model_name);
