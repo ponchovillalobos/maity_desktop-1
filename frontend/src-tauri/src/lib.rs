@@ -562,20 +562,211 @@ pub fn run() {
 
                 log::info!("Transcript provider: {}, Summary provider: {}", transcript_provider, summary_provider);
 
-                // Initialize Whisper only if using localWhisper
-                if transcript_provider == "localWhisper" {
-                    log::info!("Initializing Whisper engine (local provider configured)");
-                    if let Err(e) = whisper_engine::commands::whisper_init().await {
-                        log::error!("Failed to initialize Whisper engine: {}", e);
-                    }
+                // LOCAL-STT-DEFAULT (2026-04-08 iter #31):
+                //
+                // Decisión de producto: Whisper local es el STT multilingüe primario
+                // para usuarios en español. Parakeet TDT 0.6B v3 era solo inglés y
+                // producía basura que el filtro UX-013 borraba silenciosamente
+                // (ver docs/audit/TRANSCRIPTION_OPTIMIZATION_AUDIT.md P-1). Ahora:
+                //   1. Inicializar Whisper engine siempre
+                //   2. Auto-descargar modelo `base` (142 MB, multilingüe, incluye es)
+                //      si no existe
+                //   3. Precargarlo en memoria para que el botón grabar sea instantáneo
+                //   4. Parakeet queda como opción alternativa (usuarios que hablen en inglés)
+
+                log::info!("LOCAL-STT-DEFAULT: initializing Whisper engine as default local multilingual STT");
+                if let Err(e) = whisper_engine::commands::whisper_init().await {
+                    log::error!("LOCAL-STT-DEFAULT: Whisper init failed: {}", e);
                 } else {
-                    log::info!("Skipping Whisper init - using cloud provider: {}", transcript_provider);
+                    // LOCAL-STT-DEFAULT (iter #31):
+                    // Default "small-q5_0" basado en docs/audit/LOCAL_MULTILINGUAL_STT_COMPARISON.md
+                    // Razones: 280 MB en disco, ~550 MB RAM inferencia, WER ~13-16% en es-419,
+                    // multilingüe nativo, ya registrado en model_configs, descarga rápida.
+                    // Mejor balance tamaño/calidad/velocidad para el target Intel i5 + 8-16GB.
+                    // El usuario puede cambiar a base (142MB mediocre) o large-v3-turbo-q5_0
+                    // (574MB excelente) desde Settings.
+                    let whisper_model_name = {
+                        let state = app_handle_for_config.try_state::<crate::state::AppState>();
+                        if let Some(app_state) = state {
+                            let pool = app_state.db_manager.pool();
+                            match crate::database::repositories::setting::SettingsRepository::get_model_config(pool).await {
+                                Ok(Some(cfg)) if !cfg.whisper_model.is_empty() => cfg.whisper_model.clone(),
+                                _ => "small-q5_0".to_string(),
+                            }
+                        } else {
+                            "small-q5_0".to_string()
+                        }
+                    };
+                    log::info!("LOCAL-STT-DEFAULT: using Whisper model '{}'", whisper_model_name);
+
+                    let engine_opt = {
+                        let guard = crate::whisper_engine::commands::WHISPER_ENGINE.lock().unwrap();
+                        guard.as_ref().cloned()
+                    };
+                    if let Some(engine) = engine_opt {
+                        // Discover models (populates available_models HashMap + returns the list)
+                        let models = engine.discover_models().await.unwrap_or_else(|e| {
+                            log::warn!("LOCAL-STT-DEFAULT: discover_models failed: {}", e);
+                            Vec::new()
+                        });
+                        let target_model = models.iter().find(|m| m.name == whisper_model_name);
+                        let is_available = matches!(
+                            target_model.map(|m| &m.status),
+                            Some(crate::whisper_engine::whisper_engine::ModelStatus::Available)
+                        );
+
+                        if !is_available {
+                            log::info!(
+                                "LOCAL-STT-DEFAULT: Whisper model '{}' not on disk, auto-downloading (this may take 1-3 min on first launch)",
+                                whisper_model_name
+                            );
+                            let _ = app_handle_for_config.emit(
+                                "whisper-model-download-started",
+                                serde_json::json!({ "modelName": &whisper_model_name }),
+                            );
+                            let app_for_progress = app_handle_for_config.clone();
+                            let model_name_for_progress = whisper_model_name.clone();
+                            let progress_cb: Box<dyn Fn(u8) + Send> = Box::new(move |pct| {
+                                let _ = app_for_progress.emit(
+                                    "whisper-model-download-progress",
+                                    serde_json::json!({
+                                        "modelName": &model_name_for_progress,
+                                        "progress": pct
+                                    }),
+                                );
+                            });
+                            match engine.download_model(&whisper_model_name, Some(progress_cb)).await {
+                                Ok(_) => {
+                                    log::info!(
+                                        "LOCAL-STT-DEFAULT: Whisper model '{}' downloaded successfully",
+                                        whisper_model_name
+                                    );
+                                    let _ = app_handle_for_config.emit(
+                                        "whisper-model-download-complete",
+                                        serde_json::json!({ "modelName": &whisper_model_name }),
+                                    );
+                                }
+                                Err(e) => {
+                                    log::error!(
+                                        "LOCAL-STT-DEFAULT: Whisper download failed for '{}': {}",
+                                        whisper_model_name,
+                                        e
+                                    );
+                                    let _ = app_handle_for_config.emit(
+                                        "whisper-model-download-failed",
+                                        serde_json::json!({ "error": e.to_string(), "modelName": &whisper_model_name }),
+                                    );
+                                }
+                            }
+                        } else {
+                            log::info!("LOCAL-STT-DEFAULT: Whisper model '{}' already available on disk", whisper_model_name);
+                        }
+
+                        // Preload into memory
+                        log::info!(
+                            "PERF-005: preloading Whisper model '{}' at startup",
+                            whisper_model_name
+                        );
+                        let _ = app_handle_for_config.emit(
+                            "whisper-model-preload-started",
+                            serde_json::json!({ "modelName": &whisper_model_name }),
+                        );
+                        match engine.load_model(&whisper_model_name).await {
+                            Ok(_) => {
+                                log::info!(
+                                    "PERF-005: Whisper model '{}' preloaded — el botón grabar arrancará instantáneamente",
+                                    whisper_model_name
+                                );
+                                let _ = app_handle_for_config.emit(
+                                    "whisper-model-preload-completed",
+                                    serde_json::json!({ "modelName": &whisper_model_name }),
+                                );
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "PERF-005: Whisper preload failed for '{}': {} (will lazy-load on first use)",
+                                    whisper_model_name,
+                                    e
+                                );
+                                let _ = app_handle_for_config.emit(
+                                    "whisper-model-preload-failed",
+                                    serde_json::json!({ "error": e.to_string(), "modelName": &whisper_model_name }),
+                                );
+                            }
+                        }
+                    }
                 }
 
-                // Always initialize Parakeet engine (for auto-download at startup)
-                log::info!("Initializing Parakeet engine (always - for auto-download)");
+                // Parakeet: siempre inicializar + precargar modelo por defecto
+                log::info!("Initializing Parakeet engine (default STT local)");
                 if let Err(e) = parakeet_engine::commands::parakeet_init().await {
                     log::error!("Failed to initialize Parakeet engine: {}", e);
+                } else {
+                    // PERF-005 FIX (2026-04-08 iter #29):
+                    // Leer el modelo configurado en la DB (transcript_config.model) en lugar
+                    // de hardcodear. El nombre por defecto usado antes
+                    // "parakeet-tdt-0.6b-v2" NO existía en la config del engine (es v3-int8).
+                    // Sin esto, el preload silenciosamente fallaba y el primer click en
+                    // Grabar tardaba 4-5s cargando el modelo por demanda.
+                    let parakeet_model_name = {
+                        let state = app_handle_for_config.try_state::<crate::state::AppState>();
+                        if let Some(app_state) = state {
+                            let pool = app_state.db_manager.pool();
+                            match crate::database::repositories::setting::SettingsRepository::get_transcript_config(pool).await {
+                                Ok(Some(cfg)) if cfg.provider == "parakeet" => cfg.model.clone(),
+                                _ => "parakeet-tdt-0.6b-v3-int8".to_string(),
+                            }
+                        } else {
+                            "parakeet-tdt-0.6b-v3-int8".to_string()
+                        }
+                    };
+                    log::info!(
+                        "PERF-005: preloading Parakeet model '{}' at startup",
+                        parakeet_model_name
+                    );
+                    // UX-LOADING-MODEL: emitir evento para que el frontend muestre
+                    // indicador de carga en lugar de un botón "Grabar" engañoso.
+                    let _ = app_handle_for_config.emit(
+                        "parakeet-model-preload-started",
+                        serde_json::json!({ "modelName": &parakeet_model_name }),
+                    );
+                    let engine_opt = {
+                        let guard =
+                            crate::parakeet_engine::commands::PARAKEET_ENGINE.lock().unwrap();
+                        guard.as_ref().cloned()
+                    };
+                    if let Some(engine) = engine_opt {
+                        // PERF-005 FIX #2: descubrir modelos ANTES de cargar.
+                        // Sin discover_models(), available_models está vacío y el
+                        // load falla con "Model X not found". Esto es lo que hacían
+                        // las invocaciones normales desde el frontend vía commands.rs.
+                        if let Err(e) = engine.discover_models().await {
+                            log::warn!("PERF-005: discover_models failed: {}", e);
+                        }
+                        match engine.load_model(&parakeet_model_name).await {
+                            Ok(_) => {
+                                log::info!(
+                                    "PERF-005: Parakeet '{}' preloaded — el botón grabar arrancará instantáneamente",
+                                    parakeet_model_name
+                                );
+                                let _ = app_handle_for_config.emit(
+                                    "parakeet-model-preload-completed",
+                                    serde_json::json!({ "modelName": &parakeet_model_name }),
+                                );
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "PERF-005: Parakeet preload failed for '{}': {} (will lazy-load on first use)",
+                                    parakeet_model_name,
+                                    e
+                                );
+                                let _ = app_handle_for_config.emit(
+                                    "parakeet-model-preload-failed",
+                                    serde_json::json!({ "error": e.to_string(), "modelName": &parakeet_model_name }),
+                                );
+                            }
+                        }
+                    }
                 }
 
                 // Initialize Moonshine only if using moonshine
@@ -646,6 +837,8 @@ pub fn run() {
             stop_recording,
             is_recording,
             get_transcription_status,
+            // UX-MINIMIZED-BUTTON: permitir al frontend restaurar la ventana
+            tray::focus_main_window_cmd,
             read_audio_file,
             save_transcript,
             analytics::commands::init_analytics,

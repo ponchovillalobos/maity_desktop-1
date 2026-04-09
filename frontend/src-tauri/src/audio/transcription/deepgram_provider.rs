@@ -94,11 +94,28 @@ impl Default for DeepgramConfig {
 // DEEPGRAM REALTIME TRANSCRIBER (PERSISTENT STREAMING)
 // ============================================================================
 
-/// Maximum number of reconnection attempts before failing
-const MAX_RECONNECT_ATTEMPTS: u32 = 3;
+/// Maximum number of reconnection attempts before failing.
+/// STT-001: Aumentado de 3 a 6 para tolerar cortes de red prolongados (WiFi switch,
+/// VPN reconnect, etc.) sin perder la sesión de transcripción.
+const MAX_RECONNECT_ATTEMPTS: u32 = 6;
 
-/// Delay between reconnection attempts (milliseconds)
-const RECONNECT_DELAY_MS: u64 = 1000;
+/// Base delay for exponential backoff between reconnection attempts (milliseconds).
+/// STT-001: Delay real = BASE * 2^(attempt-1), con tope en [`RECONNECT_MAX_DELAY_MS`].
+/// Secuencia resultante: 1s, 2s, 4s, 8s, 16s, 30s (capped).
+const RECONNECT_BASE_DELAY_MS: u64 = 1000;
+
+/// Upper bound for the exponential backoff delay (milliseconds).
+const RECONNECT_MAX_DELAY_MS: u64 = 30_000;
+
+/// Compute exponential backoff delay for a given 1-indexed attempt number.
+/// STT-001: Crítico para no martillar el proxy Cloudflare ni Deepgram cuando hay
+/// un incidente upstream. Prioridad del proyecto: cero pérdidas de datos.
+fn reconnect_backoff_ms(attempt: u32) -> u64 {
+    // attempt=1 → 1s, attempt=2 → 2s, attempt=3 → 4s, ...
+    let shift = attempt.saturating_sub(1).min(20); // evita overflow en 1u64 << n
+    let delay = RECONNECT_BASE_DELAY_MS.saturating_mul(1u64 << shift);
+    delay.min(RECONNECT_MAX_DELAY_MS)
+}
 
 pub struct DeepgramRealtimeTranscriber {
     config: DeepgramConfig,
@@ -316,12 +333,12 @@ impl DeepgramRealtimeTranscriber {
                 Err(e) => {
                     let safe_msg = e.to_string();
                     if attempt < MAX_RECONNECT_ATTEMPTS {
+                        let delay_ms = reconnect_backoff_ms(attempt);
                         warn!(
-                            "Deepgram connection attempt {}/{} failed: {}. Retrying in {}ms...",
-                            attempt, MAX_RECONNECT_ATTEMPTS, safe_msg, RECONNECT_DELAY_MS
+                            "Deepgram connection attempt {}/{} failed: {}. Retrying in {}ms (exponential backoff)...",
+                            attempt, MAX_RECONNECT_ATTEMPTS, safe_msg, delay_ms
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(RECONNECT_DELAY_MS))
-                            .await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     } else {
                         error!(
                             "Deepgram connection failed after {} attempts: {}",
@@ -792,6 +809,24 @@ fn base64_encode(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// STT-001: verifica la secuencia exacta del backoff exponencial.
+    /// Protege contra cambios accidentales que rompan la resilencia a cortes de red.
+    #[test]
+    fn test_reconnect_backoff_exponential_sequence() {
+        // Secuencia esperada: 1s, 2s, 4s, 8s, 16s, 30s (capped), 30s, ...
+        assert_eq!(reconnect_backoff_ms(1), 1_000);
+        assert_eq!(reconnect_backoff_ms(2), 2_000);
+        assert_eq!(reconnect_backoff_ms(3), 4_000);
+        assert_eq!(reconnect_backoff_ms(4), 8_000);
+        assert_eq!(reconnect_backoff_ms(5), 16_000);
+        assert_eq!(reconnect_backoff_ms(6), 30_000); // 32s clamped a 30s
+        assert_eq!(reconnect_backoff_ms(10), RECONNECT_MAX_DELAY_MS);
+        // attempt=0 no debe hacer overflow (tolera llamadas defensivas)
+        assert_eq!(reconnect_backoff_ms(0), RECONNECT_BASE_DELAY_MS);
+        // valor absurdo no causa panic
+        assert_eq!(reconnect_backoff_ms(u32::MAX), RECONNECT_MAX_DELAY_MS);
+    }
 
     #[test]
     fn test_config_default() {

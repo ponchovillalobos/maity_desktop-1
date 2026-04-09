@@ -138,6 +138,9 @@ ffmpeg-sidecar = { git = "https://github.com/nathanbabcock/ffmpeg-sidecar", rev 
 
 # ── Speech recognition (whisper-rs is OS-conditional, see below) ───────────
 # Parakeet (ONNX-based fast transcription)
+# QW-3 (2026-04-08): base dep sin features. Las features GPU se activan via
+# target-specific dependencies más abajo (DirectML en Windows, CoreML en macOS).
+# Esto evita pagar costo de compilación CUDA en la plataforma equivocada.
 ort = { version = "2.0.0-rc.10" }  # ONNX Runtime
 # Moonshine uses a custom JSON tokenizer parser (see src/moonshine_engine/) to
 # avoid C++ runtime conflicts on Windows — no separate dep needed here.
@@ -179,6 +182,8 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # ── macOS: Metal GPU + CoreML auto-enabled ────────────────────────────────
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.13.2", features = ["raw-api", "metal", "coreml"] }
+# QW-3 (2026-04-08): CoreML execution provider for Parakeet/Moonshine ONNX
+ort = { version = "2.0.0-rc.10", features = ["coreml"] }
 
 # ScreenCaptureKit + system audio (macOS only)
 objc              = "0.2.7"
@@ -191,6 +196,9 @@ tauri-plugin-log  = { version = "2.6.0", features = ["colored"] }
 # ── Windows: CPU-only by default; opt-in cuda/vulkan/openblas via features ──
 [target.'cfg(target_os = "windows")'.dependencies]
 whisper-rs = { version = "0.13.2", features = ["raw-api"] }
+# QW-3 (2026-04-08): DirectML execution provider for Parakeet/Moonshine ONNX.
+# Funciona en cualquier GPU DX12 (NVIDIA/AMD/Intel/iGPU). 5-7× speedup esperado.
+ort = { version = "2.0.0-rc.10", features = ["directml"] }
 # WASAPI for system audio loopback (capturas videollamadas)
 windows = { version = "0.58", features = [
     "Win32_Media_Audio",

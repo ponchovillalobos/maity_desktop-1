@@ -42,13 +42,16 @@ impl ContinuousVadProcessor {
         // Shorter chunks cause hallucinations; fragments <800ms are usually
         // clicks, grunts, or partial words that Parakeet mis-transcribes.
         //
-        // Four key constants tuned for Parakeet:
-        //   - MIN_SPEECH_MS    = 800   (was 150) — drop sub-word fragments
-        //   - MIN_SILENCE_MS   = 1000  (floor)   — wait 1s before closing segment
+        // QW-1 (audit 2026-04-08): bajar MIN_SPEECH y MIN_SILENCE para recortar
+        // latencia percibida. Antes 800/1000 eran demasiado conservadores y hacían
+        // que el usuario esperara 1.8s+ antes de ver texto. Ahora 300/400 — más
+        // cercano a lo que hacen Otter/Fireflies en móvil.
+        //   - MIN_SPEECH_MS    = 300  (was 800)  — emit sooner for "live feel"
+        //   - MIN_SILENCE_MS   = 400  (was 1000) — close segment 600ms earlier
         //   - MAX_SPEECH_MS    = 30_000          — never emit >30s chunks (Parakeet cap)
-        //   - POS_THRESHOLD    = 0.55  (was 0.50) — slightly stricter, fewer false starts
-        const MIN_SPEECH_MS: u64 = 800;
-        const MIN_SILENCE_MS: u64 = 1_000;
+        //   - POS_THRESHOLD    = 0.55            — slightly stricter, fewer false starts
+        const MIN_SPEECH_MS: u64 = 300;
+        const MIN_SILENCE_MS: u64 = 400;
         const MAX_SPEECH_MS: u64 = 30_000;
         const POS_THRESHOLD: f32 = 0.55;
         const NEG_THRESHOLD: f32 = 0.35;

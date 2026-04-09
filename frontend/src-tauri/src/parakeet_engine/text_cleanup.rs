@@ -54,6 +54,76 @@ const MAX_PHRASE_WINDOW: usize = 5;
 /// non-empty after cleanup. Shorter outputs are returned as empty string.
 const MIN_TRANSCRIPT_CHARS: usize = 1;
 
+/// Blacklist de frases alucinadas comunes en Whisper/Parakeet para español.
+/// Origen: openai/whisper#1762 + HF community posts + observación en reuniones reales.
+/// Whisper fue entrenado con subtítulos de YouTube; cuando hay silencio o ruido
+/// tiende a emitir este tipo de frases "fantasma" que nunca fueron dichas.
+/// Matching case-insensitive, trim whitespace.
+const HALLUCINATED_PHRASES_ES: &[&str] = &[
+    // YouTube boilerplate (training data bleed)
+    "gracias por ver el video",
+    "gracias por ver este video",
+    "gracias por ver el vídeo",
+    "suscríbete al canal",
+    "suscríbete a mi canal",
+    "dale like y suscríbete",
+    "no olvides suscribirte",
+    "subtítulos por la comunidad",
+    "subtítulos realizados por la comunidad de amara.org",
+    "subtítulos por amara.org",
+    "transcripción realizada por la comunidad",
+    "transcripción por la comunidad de amara",
+    "muchas gracias por ver el video",
+    // Conferencia/webinar boilerplate
+    "muchas gracias a todos",
+    "gracias a todos por su atención",
+    "hasta la próxima",
+    // Whisper / NeMo artefactos
+    "amen",
+    "amén",
+    "fin",
+    "fin.",
+    "fin del video",
+    "aplausos",
+    "música",
+    "risas",
+    "silencio",
+    // Repeticiones ruidosas
+    "sí sí sí sí",
+    "no no no no",
+    "ah ah ah",
+    // English boilerplate en salida es (language leak)
+    "thank you for watching",
+    "thanks for watching",
+    "please subscribe",
+    "don't forget to subscribe",
+    "like and subscribe",
+    "subtitles by the amara.org community",
+];
+
+/// Aplica la blacklist: si el texto completo (trimmed, lowercased) matchea
+/// una frase alucinada conocida, se descarta. Si el texto contiene la frase
+/// como substring dominante (>70% de los caracteres), también se descarta.
+fn strip_hallucinated_phrases(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let lower = trimmed.to_lowercase();
+    for phrase in HALLUCINATED_PHRASES_ES {
+        if lower == *phrase {
+            log::debug!("text_cleanup: dropped hallucinated phrase (exact): '{}'", trimmed);
+            return String::new();
+        }
+        // Dominant substring check: si la frase alucinada es >= 70% del texto
+        if lower.contains(phrase) && (phrase.len() as f32 / lower.len() as f32) >= 0.7 {
+            log::debug!("text_cleanup: dropped hallucinated phrase (dominant): '{}'", trimmed);
+            return String::new();
+        }
+    }
+    text.to_string()
+}
+
 /// Public entry point: apply the full cleanup chain to a raw Parakeet
 /// transcript. Returns an empty string if the result is pure noise.
 pub fn clean_transcription(raw: &str) -> String {
@@ -61,10 +131,13 @@ pub fn clean_transcription(raw: &str) -> String {
     let deduped_words = dedupe_consecutive_words(&stripped);
     let deduped_phrases = dedupe_consecutive_phrases(&deduped_words);
     let normalized = normalize_whitespace(&deduped_phrases);
-    if normalized.chars().filter(|c| !c.is_whitespace()).count() < MIN_TRANSCRIPT_CHARS {
+    // ANTI-HALLUCINATION (iter #31): aplicar blacklist de frases fantasma
+    // conocidas en español + English boilerplate (language leak).
+    let no_hallucinations = strip_hallucinated_phrases(&normalized);
+    if no_hallucinations.chars().filter(|c| !c.is_whitespace()).count() < MIN_TRANSCRIPT_CHARS {
         return String::new();
     }
-    normalized
+    no_hallucinations
 }
 
 /// Remove `[blank]`, `<unk>`, SentencePiece `▁` word markers, and similar
@@ -123,10 +196,7 @@ pub fn dedupe_consecutive_words(text: &str) -> String {
 /// 2..=MAX_PHRASE_WINDOW and, when we find a phrase repeated more than
 /// `MAX_CONSECUTIVE_PHRASE_RUN` times, we keep only one copy.
 pub fn dedupe_consecutive_phrases(text: &str) -> String {
-    let words: Vec<String> = text
-        .split_whitespace()
-        .map(|w| w.to_string())
-        .collect();
+    let words: Vec<String> = text.split_whitespace().map(|w| w.to_string()).collect();
     if words.len() < 4 {
         return text.to_string();
     }
@@ -250,7 +320,10 @@ mod tests {
         assert!(!cleaned.contains("[blank]"));
         assert!(!cleaned.contains("<unk>"));
         // No 4-in-a-row of "the"
-        let the_count = cleaned.split_whitespace().filter(|w| w.eq_ignore_ascii_case("the")).count();
+        let the_count = cleaned
+            .split_whitespace()
+            .filter(|w| w.eq_ignore_ascii_case("the"))
+            .count();
         assert!(the_count <= 2, "too many 'the' left: {:?}", cleaned);
     }
 
@@ -264,5 +337,50 @@ mod tests {
     fn full_chain_preserves_spanish_accents() {
         let out = clean_transcription("holá cómo estás");
         assert_eq!(out, "holá cómo estás");
+    }
+
+    // ANTI-HALLUCINATION (iter #31)
+
+    #[test]
+    fn drops_exact_youtube_boilerplate() {
+        assert_eq!(clean_transcription("Gracias por ver el video"), "");
+        assert_eq!(clean_transcription("gracias por ver el video"), "");
+        assert_eq!(clean_transcription("  GRACIAS POR VER EL VIDEO  "), "");
+    }
+
+    #[test]
+    fn drops_subscribe_prompts() {
+        assert_eq!(clean_transcription("Suscríbete al canal"), "");
+        assert_eq!(clean_transcription("Subtítulos realizados por la comunidad de Amara.org"), "");
+    }
+
+    #[test]
+    fn drops_english_language_leak() {
+        assert_eq!(clean_transcription("Thank you for watching"), "");
+        assert_eq!(clean_transcription("Please subscribe"), "");
+    }
+
+    #[test]
+    fn drops_dominant_hallucination() {
+        // Frase alucinada rodeada de muy poco texto real (>=70% del total)
+        assert_eq!(clean_transcription("Gracias por ver el video"), "");
+    }
+
+    #[test]
+    fn preserves_real_spanish_meeting_text() {
+        let real = "Entonces lo que pensé es que para el próximo sprint deberíamos priorizar el módulo de pagos";
+        assert_eq!(clean_transcription(real), real);
+    }
+
+    #[test]
+    fn preserves_short_spanish_utterance() {
+        assert_eq!(clean_transcription("sí, de acuerdo"), "sí, de acuerdo");
+    }
+
+    #[test]
+    fn hallucinated_phrase_case_insensitive() {
+        assert_eq!(clean_transcription("AMEN"), "");
+        assert_eq!(clean_transcription("amén"), "");
+        assert_eq!(clean_transcription("Fin del video"), "");
     }
 }

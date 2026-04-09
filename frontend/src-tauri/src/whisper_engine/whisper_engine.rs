@@ -12,6 +12,50 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
+// PERF-003: Multiplicador aplicado al tamaño del modelo para estimar la RAM
+// total requerida (pesos + buffers de inferencia + margen). Whisper-cpp suele
+// usar ~1.3× del tamaño del archivo en residente; usamos 2.0× para dejar
+// margen de seguridad y evitar OOM kills en Windows (especialmente laptops 8GB).
+const WHISPER_RAM_OVERHEAD_FACTOR: f64 = 2.0;
+
+/// PERF-003: Verifica que hay RAM disponible suficiente para cargar un modelo
+/// Whisper del tamaño indicado ANTES de invocar `WhisperContext::new_with_params`.
+///
+/// Retorna `Ok(())` si el sistema puede tolerar la carga, `Err` con mensaje
+/// accionable si no. Usado por `load_model` para proteger al usuario de OOM
+/// silencioso con modelos grandes (large-v3 ≈ 3GB en disco, ~6GB cargado).
+fn check_ram_for_model(model_name: &str, model_size_mb: u32) -> Result<()> {
+    use sysinfo::System;
+    let mut sys = System::new();
+    sys.refresh_memory();
+    let available_bytes = sys.available_memory();
+    let required_mb = (model_size_mb as f64 * WHISPER_RAM_OVERHEAD_FACTOR) as u64;
+    let required_bytes = required_mb * 1024 * 1024;
+    let available_mb = available_bytes / (1024 * 1024);
+
+    log::info!(
+        "PERF-003: Whisper RAM check — model='{}' size={}MB required≈{}MB available={}MB",
+        model_name,
+        model_size_mb,
+        required_mb,
+        available_mb
+    );
+
+    if available_bytes < required_bytes {
+        return Err(anyhow!(
+            "PERF-003: RAM insuficiente para cargar el modelo Whisper '{}'. \
+             Requerido ≈{} MB (modelo {} MB × {:.1} overhead), disponible: {} MB. \
+             Libera memoria o elige un modelo más pequeño (base/small).",
+            model_name,
+            required_mb,
+            model_size_mb,
+            WHISPER_RAM_OVERHEAD_FACTOR,
+            available_mb
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModelStatus {
     Available,
@@ -402,6 +446,10 @@ impl WhisperEngine {
 
                 log::info!("Loading model: {}", model_name);
 
+                // PERF-003: Cap de RAM — abortar antes de cargar si no hay memoria suficiente.
+                // Esto previene OOM kills silenciosos en Windows con modelos grandes.
+                check_ram_for_model(model_name, model_info.size_mb)?;
+
                 // PERFORMANCE OPTIMIZATION: Use comprehensive hardware profile for optimal GPU configuration
                 let hardware_profile = crate::audio::HardwareProfile::detect();
                 let adaptive_config = hardware_profile.get_whisper_config();
@@ -705,12 +753,32 @@ impl WhisperEngine {
         // Additional suppression to reduce C library verbosity
         params.set_suppress_blank(true);
         params.set_suppress_non_speech_tokens(true);
-        params.set_temperature(adaptive_config.temperature);
+
+        // ANTI-HALLUCINATION (iter #31, audit 2026-04-08):
+        // #1 Desactivar condition_on_previous_text (no_context=true). Sin esto,
+        //    errores y alucinaciones se propagan al siguiente chunk en streaming.
+        //    Issue openai/whisper#679. Impacto: ALTO, reduce bucles de repetición.
+        params.set_no_context(true);
+
+        // #2 Temperature=0.0 con fallback stack (0.0 -> 0.2 -> 0.4 -> ... -> 1.0).
+        //    El stack de temperaturas es la defensa DISEÑADA de Whisper contra
+        //    repetición: solo re-muestrea si logprob_thold o entropy_thold fallan.
+        //    Con temperature fija nunca re-muestrea y una alucinación se emite tal cual.
+        params.set_temperature(0.0);
+
+        // #3 logprob_thold = -0.8 (antes -1.0 que desactivaba el umbral).
+        //    Con -0.8 el fallback se dispara cuando la confianza del decoder cae,
+        //    reactivando el re-sample con mayor temperatura.
+        params.set_logprob_thold(-0.8);
+
+        // #4 Initial prompt en español sesga el decoder hacia registro formal
+        //    hispano de reunión. Evita "traducciones" espontáneas a inglés.
+        params.set_initial_prompt("Transcripción en español de una reunión de negocios profesional.");
+
         params.set_max_initial_ts(1.0);
         params.set_entropy_thold(2.4);
-        params.set_logprob_thold(-1.0);
+
         // BALANCED FIX: Lowered from 0.75 to 0.55 to allow quiet speech detection
-        // Previous value was too aggressive and rejected valid quiet speech
         // 0.55 is balanced - prevents hallucinations while preserving quiet speech
         params.set_no_speech_thold(0.55);
         params.set_max_len(200);
@@ -825,13 +893,17 @@ impl WhisperEngine {
         // BALANCED settings - good quality with reasonable speed
         params.set_suppress_blank(true);
         params.set_suppress_non_speech_tokens(true);
-        params.set_temperature(0.3); // Lower than 0.4 for consistency, higher than 0.0 for quality
+
+        // ANTI-HALLUCINATION (iter #31, audit 2026-04-08): mismos fixes que en
+        // transcribe_audio_with_confidence. Ver comentarios allí.
+        params.set_no_context(true);
+        params.set_temperature(0.0);
+        params.set_logprob_thold(-0.8);
+        params.set_initial_prompt("Transcripción en español de una reunión de negocios profesional.");
+
         params.set_max_initial_ts(1.0);
         params.set_entropy_thold(2.4);
-        params.set_logprob_thold(-1.0);
-        // BALANCED FIX: Lowered from 0.75 to 0.55 to allow quiet speech detection
-        // Previous value was too aggressive and rejected valid quiet speech
-        // 0.55 is balanced - prevents hallucinations while preserving quiet speech
+        // BALANCED FIX: 0.55 - prevents hallucinations while preserving quiet speech
         params.set_no_speech_thold(0.55);
 
         // Reasonable length limits
@@ -1389,5 +1461,40 @@ impl WhisperEngine {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// PERF-003: modelo de 1MB pasa sin problemas (cualquier sistema lo tolera).
+    #[test]
+    fn test_check_ram_small_model_passes() {
+        let res = check_ram_for_model("tiny-test", 1);
+        assert!(
+            res.is_ok(),
+            "Modelo trivial de 1MB debería pasar el RAM check: {:?}",
+            res
+        );
+    }
+
+    /// PERF-003: solicitar un modelo absurdo (1 TB) debe fallar con mensaje accionable.
+    /// Protege contra valores corruptos en `ModelInfo::size_mb`.
+    #[test]
+    fn test_check_ram_huge_model_fails_with_actionable_msg() {
+        let huge_mb: u32 = 1_000_000; // 1 TB
+        let res = check_ram_for_model("fantasy-xxl", huge_mb);
+        assert!(res.is_err(), "Modelo de 1TB debería fallar RAM check");
+        let err = res.unwrap_err().to_string();
+        assert!(err.contains("PERF-003"));
+        assert!(err.contains("RAM insuficiente"));
+        assert!(err.contains("fantasy-xxl"));
+    }
+
+    /// PERF-003: el factor de overhead se aplica realmente (2× del tamaño base).
+    #[test]
+    fn test_ram_overhead_factor_is_two() {
+        assert!((WHISPER_RAM_OVERHEAD_FACTOR - 2.0).abs() < f64::EPSILON);
     }
 }

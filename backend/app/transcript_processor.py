@@ -84,6 +84,43 @@ class TranscriptProcessor:
         logger.info("TranscriptProcessor initialized.")
         self.db = DatabaseManager()
         self.active_clients = []  # Track active Ollama client sessions
+    # LLM-001: Cap de tokens antes de invocar APIs de pago.
+    # - MAITY_LLM_MAX_INPUT_TOKENS: cap total para toda la transcripción (default 500k).
+    #   Previene que reuniones anómalas (ej. 12h loop de micrófono abierto) disparen
+    #   costos no acotados en Claude/OpenAI/Groq.
+    # - Estimación heurística rápida: 1 token ≈ 4 caracteres (tokenizer-agnostic,
+    #   suficiente para abortar temprano; el backend LLM sigue siendo la fuente de verdad
+    #   para el conteo real de billing).
+    LLM_MAX_INPUT_TOKENS = int(os.getenv("MAITY_LLM_MAX_INPUT_TOKENS", "500000"))
+    LLM_CHARS_PER_TOKEN = 4  # heurística estándar para prompts ES/EN mixtos
+
+    @classmethod
+    def estimate_tokens(cls, text: str) -> int:
+        """LLM-001: Estima tokens de un texto con heurística char/4.
+
+        No es exacto (cada proveedor tiene su tokenizer), pero es suficiente
+        para un guard de seguridad previo a la invocación del LLM.
+        """
+        if not text:
+            return 0
+        return max(1, len(text) // cls.LLM_CHARS_PER_TOKEN)
+
+    @classmethod
+    def enforce_token_cap(cls, text: str, custom_prompt: str = "") -> int:
+        """LLM-001: Valida que input_tokens <= LLM_MAX_INPUT_TOKENS.
+
+        Levanta ValueError con mensaje accionable si se excede, ANTES de
+        gastar un solo token en APIs de pago. Retorna el conteo estimado.
+        """
+        estimated = cls.estimate_tokens(text) + cls.estimate_tokens(custom_prompt)
+        if estimated > cls.LLM_MAX_INPUT_TOKENS:
+            raise ValueError(
+                f"LLM-001: transcript excede el cap de tokens "
+                f"({estimated} > {cls.LLM_MAX_INPUT_TOKENS}). "
+                f"Ajusta MAITY_LLM_MAX_INPUT_TOKENS o segmenta la reunión antes de procesarla."
+            )
+        return estimated
+
     # LLM-006: Whitelist of recommended/supported model identifiers per provider.
     # Rejects deprecated or unknown model_name values to prevent silent failures
     # (e.g., user passing 'gpt-3.5-turbo' which is deprecated).
@@ -154,6 +191,9 @@ class TranscriptProcessor:
         logger.info(f"Processing transcript (length {len(text)}) with model provider={model}, model_name={model_name}, chunk_size={chunk_size}, overlap={overlap}")
         # LLM-006: Validate model BEFORE invoking any provider
         self.validate_model(model, model_name)
+        # LLM-001: Cap de tokens ANTES de invocar APIs de pago.
+        estimated_tokens = self.enforce_token_cap(text, custom_prompt)
+        logger.info(f"LLM-001: estimated_input_tokens={estimated_tokens} (cap={self.LLM_MAX_INPUT_TOKENS})")
 
         all_json_data = []
         agent = None # Define agent variable

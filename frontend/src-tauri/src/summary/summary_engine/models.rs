@@ -71,6 +71,7 @@ pub fn get_available_models() -> Vec<ModelDef> {
             display_name: "Gemma 3 1B (Fast)".to_string(),
             gguf_file: "gemma-3-1b-it-Q8_0.gguf".to_string(),
             template: "gemma3".to_string(),
+            // CDN upstream: NO renombrar (rompe downloads).
             download_url:
                 "https://meetily.towardsgeneralintelligence.com/models/gemma-3-1b-it-Q8_0.gguf"
                     .to_string(),
@@ -92,6 +93,7 @@ pub fn get_available_models() -> Vec<ModelDef> {
             display_name: "Gemma 3 4B (Balanced)".to_string(),
             gguf_file: "gemma-3-4b-it-Q4_K_M.gguf".to_string(),
             template: "gemma3".to_string(),
+            // CDN upstream: NO renombrar (rompe downloads).
             download_url:
                 "https://meetily.towardsgeneralintelligence.com/models/gemma-3-4b-it-Q4_K_M.gguf"
                     .to_string(),

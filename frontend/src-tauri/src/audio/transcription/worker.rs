@@ -545,14 +545,13 @@ pub fn start_transcription_task<R: Runtime>(
         let chunks_dropped_dispatcher = chunks_dropped.clone();
 
         // Separate accumulators per device type (mic and system audio transcribe independently)
-        // Adaptive parameters based on hardware tier
+        // QW-4 (audit 2026-04-08): antes los tiers altos esperaban MÁS (1500ms flush
+        // en Ultra) que los bajos — exactamente lo contrario de la intuición esperada.
+        // El usuario con hardware potente se sentía MÁS laggy que el que tiene una laptop
+        // débil. Ahora todos los tiers usan (0.3s, 4.0s, 400ms): emit-sooner, techo
+        // razonable, flush rápido. Reduces latencia percibida ~700-1100ms.
         let hw_profile = crate::audio::HardwareProfile::detect();
-        let (min_dur, max_dur, flush_timeout) = match hw_profile.performance_tier {
-            crate::audio::PerformanceTier::Ultra => (1.0, 8.0, 1500),
-            crate::audio::PerformanceTier::High => (0.8, 6.0, 1200),
-            crate::audio::PerformanceTier::Medium => (0.8, 4.0, 1000),
-            crate::audio::PerformanceTier::Low => (0.5, 3.0, 800),
-        };
+        let (min_dur, max_dur, flush_timeout) = (0.3_f64, 4.0_f64, 400_u64);
         info!(
             "[WORKER] Adaptive ChunkAccumulator: min={:.1}s, max={:.1}s, flush={}ms (tier: {:?})",
             min_dur, max_dur, flush_timeout, hw_profile.performance_tier

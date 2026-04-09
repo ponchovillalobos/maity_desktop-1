@@ -104,13 +104,47 @@ fn toggle_recording_handler<R: Runtime>(app: &AppHandle<R>) {
                 }
             }
         } else {
-            // Immediately show starting state
+            // UX-MINIMIZED-BUTTON (2026-04-08):
+            // Antes: eval('autoStartRecording=true') + location.assign('/') — este flujo
+            // dependía del webview estar despierto (se rompía si la ventana estaba
+            // minimizada, porque Chromium suspende el JS de webviews fuera de pantalla).
+            // Ahora: llamamos directamente la función Rust del start, bypaseando por
+            // completo el frontend. El webview recibe el evento 'recording-started' y
+            // actualiza su estado cuando se restaura — pero la grabación YA está andando.
             set_tray_state(&app_clone, RecordingState::Starting);
+            log::info!("Tray toggle: Starting recording directly via native start_recording_with_meeting_name (no eval)");
 
-            log::info!("Emitting start recording event from tray");
-            if let Some(window) = app_clone.get_webview_window("main") {
-                let _ = window.eval("sessionStorage.setItem('autoStartRecording', 'true')"); // Set the flag to start recording automatically
-                let _ = window.eval("window.location.assign('/')");
+            match crate::audio::recording_commands::start_recording_with_meeting_name(
+                app_clone.clone(),
+                None, // meeting_name: usa default "Meeting DD/MM HH:MM"
+            )
+            .await
+            {
+                Ok(_) => {
+                    log::info!("Tray toggle: Recording started successfully (native path)");
+
+                    // Avisar al frontend para que actualice la UI cuando se restaure
+                    if let Err(e) = app_clone.emit("recording-start-complete", true) {
+                        log::warn!("Tray toggle: failed to emit recording-start-complete: {}", e);
+                    }
+
+                    // Mostrar notificación del sistema (best-effort, no-op si falla)
+                    let notif_state = app_clone.state::<crate::NotificationManagerState<R>>();
+                    if let Err(e) =
+                        crate::notifications::commands::show_recording_started_notification(
+                            &app_clone,
+                            &notif_state,
+                            None,
+                        )
+                        .await
+                    {
+                        log::warn!("Tray toggle: notification failed: {}", e);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Tray toggle: Failed to start recording (native): {}", e);
+                    update_tray_menu_async(&app_clone).await;
+                }
             }
         }
     });
@@ -441,7 +475,7 @@ fn build_menu<R: Runtime>(
         .build()
 }
 
-fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
+pub fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -450,4 +484,15 @@ fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
     } else {
         log::warn!("Could not find main window");
     }
+}
+
+/// UX-MINIMIZED-BUTTON (2026-04-08):
+/// Comando Tauri expuesto al frontend para que cualquier acción crítica pueda
+/// garantizar que la ventana esté visible antes de ejecutarse. Útil cuando el
+/// usuario minimizó la app y un evento asíncrono (recuperación, meeting-detected,
+/// notificación) necesita su atención.
+#[tauri::command]
+pub async fn focus_main_window_cmd<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    focus_main_window(&app);
+    Ok(())
 }

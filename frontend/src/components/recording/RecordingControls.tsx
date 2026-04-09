@@ -29,6 +29,9 @@ interface RecordingControlsProps {
   onTranscriptionError?: (message: string) => void;
   onStopInitiated?: () => void; // Called immediately when stop button is clicked
   isRecordingDisabled: boolean;
+  /** UX-LOADING-MODEL: etiqueta opcional para cuando el botón esté deshabilitado
+   *  por precarga del modelo (ej. "Cargando modelo…"). Muestra spinner + tooltip claro. */
+  loadingLabel?: string;
   isParentProcessing: boolean;
   selectedDevices?: {
     micDevice: string | null;
@@ -48,6 +51,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   onTranscriptionError,
   onStopInitiated,
   isRecordingDisabled,
+  loadingLabel,
   isParentProcessing,
   selectedDevices,
   meetingName,
@@ -436,11 +440,11 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                           disabled={isBusy || isRecordingDisabled}
                           className={`w-12 h-12 flex items-center justify-center ${isBusy || isRecordingDisabled ? 'bg-[#8a8a8d]' : 'bg-[#ff0050] hover:bg-[#cc0040]'
                             } rounded-full text-white transition-colors relative`}
-                          aria-label="Iniciar grabación"
+                          aria-label={loadingLabel || 'Iniciar grabación'}
                           aria-pressed={false}
-                          aria-busy={isValidatingModel}
+                          aria-busy={isValidatingModel || !!loadingLabel}
                         >
-                          {isValidatingModel ? (
+                          {isValidatingModel || loadingLabel ? (
                             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                           ) : (
                             <Mic size={20} />
@@ -448,7 +452,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Iniciar grabación</p>
+                        <p>{loadingLabel || 'Iniciar grabación'}</p>
                       </TooltipContent>
                     </Tooltip>
                   ) : (

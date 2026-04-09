@@ -45,7 +45,10 @@ pub struct HighPassState {
 
 impl HighPassState {
     pub const fn new() -> Self {
-        Self { prev_input: 0.0, prev_output: 0.0 }
+        Self {
+            prev_input: 0.0,
+            prev_output: 0.0,
+        }
     }
 
     pub fn reset(&mut self) {
@@ -172,7 +175,12 @@ mod tests {
         high_pass_80hz(&mut buf, sr, &mut st);
         let new_peak = buf.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
         // Expect <5% loss at 1 kHz for an 80 Hz HP.
-        assert!(new_peak > orig_peak * 0.95, "1kHz too attenuated: {} -> {}", orig_peak, new_peak);
+        assert!(
+            new_peak > orig_peak * 0.95,
+            "1kHz too attenuated: {} -> {}",
+            orig_peak,
+            new_peak
+        );
     }
 
     #[test]
@@ -205,6 +213,10 @@ mod tests {
         let mean: f32 = buf.iter().sum::<f32>() / buf.len() as f32;
         let peak = buf.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
         assert!(mean.abs() < 0.05, "residual mean after chain: {}", mean);
-        assert!(peak <= PEAK_NORMALIZE_TARGET + 1e-3, "peak too high: {}", peak);
+        assert!(
+            peak <= PEAK_NORMALIZE_TARGET + 1e-3,
+            "peak too high: {}",
+            peak
+        );
     }
 }

@@ -691,6 +691,7 @@ impl ParakeetEngine {
             "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/main"
         } else {
             // Default to v3 for v3 models
+            // CDN upstream — NO renombrar a "maity" (el subdominio no existe y rompe downloads).
             "https://meetily.towardsgeneralintelligence.com/models/parakeet-tdt-0.6b-v3-onnx"
         };
 

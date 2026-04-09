@@ -115,6 +115,9 @@ impl<R: Runtime> ConsentManager<R> {
         let mut path =
             dirs::config_dir().ok_or_else(|| anyhow!("Could not find config directory"))?;
 
+        // NOTE: Mantener "meetily" como nombre de carpeta de config legado —
+        // renombrarlo rompería el consentimiento guardado en instalaciones existentes.
+        // El rebrand visible (UI/ventanas/Info.plist) ya ocurrió en otros lados.
         path.push("meetily");
         path.push("notifications.json");
 

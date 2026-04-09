@@ -1,9 +1,9 @@
 {
   "version": "1.0",
   "last_updated": "2026-04-08",
-  "evaluation_cycle": 4,
-  "commits": 36,
-  "iterations": 25,
+  "evaluation_cycle": 9,
+  "commits": 37,
+  "iterations": 30,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -688,6 +688,66 @@
           "status": "in-progress",
           "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/19",
           "references": []
+        },
+        {
+          "id": "UX-ACCOUNT-BADGE",
+          "title": "Badge de cuenta visible en sidebar",
+          "severity": "high",
+          "description": "Usuario pedía saber con qué cuenta estaba trabajando. Sin indicador de quién está logueado, confusión en multi-cuenta.",
+          "recommendation": "SidebarControls.tsx: render <User avatar + displayName + email + signOut button> arriba del botón grabar. Usa useAuth() -> maityUser + user.",
+          "impact": 7,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #27]"
+        },
+        {
+          "id": "UX-SIMPLIFY-WHISPER-OFF",
+          "title": "Desactivar Whisper local por simplificación",
+          "severity": "medium",
+          "description": "Usuario pidió simplificar: Parakeet es suficiente para es-419. Whisper local queda desactivado (engine preservado pero no precargado ni auto-init).",
+          "recommendation": "lib.rs setup: eliminar la rama if transcript_provider == 'localWhisper' → whisper_init(). Documentar decision.",
+          "impact": 6,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #27] Código de Whisper intacto, sólo desactivado el startup."
+        },
+        {
+          "id": "UX-BRAND-MAITY",
+          "title": "Rebrand Meetily → Maity en código y UI",
+          "severity": "high",
+          "description": "El producto se llama Maity, no Meetily. Legado por fork. Había 9 archivos de código con 'Meetily' visible al usuario.",
+          "recommendation": "Reemplazar en código user-facing (no tocar: URLs de CDN upstream, config paths histórica de notifications, assembly_data.json histórica). Migrar folder default recordings con fallback legacy→modern.",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #27] recording_preferences.rs migrado con compat legacy; URLs de CDN conservadas."
+        },
+        {
+          "id": "UX-RECOVERY-ERRORS",
+          "title": "Auto-recovery con reporte de errores accionable",
+          "severity": "high",
+          "description": "Antes los fallos de auto-recovery se tragaban silenciosamente en console.error. Ahora se muestra un toast.error con la primera causa real del fallo y boton 'Abrir recuperacion manual' que abre el modal legacy como fallback.",
+          "recommendation": "Capturar failures array en autoRecover, mostrar toast.error con description del primer fallo + action para abrir modal manual.",
+          "impact": 8,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #29]"
+        },
+        {
+          "id": "UX-MINIMIZED-BUTTON",
+          "title": "Tray start_recording nativo sin depender del webview",
+          "severity": "high",
+          "description": "Al minimizar la ventana, el webview se suspende y el handler del tray 'Start Recording' fallaba porque dependia de eval() + sessionStorage + location.assign(). Fix: llamar directamente la funcion Rust start_recording_with_meeting_name desde el tray, bypaseando completamente el frontend.",
+          "recommendation": "tray.rs::toggle_recording_handler en la rama !is_recording llama la funcion Rust nativa del comando. Se agrego tambien focus_main_window_cmd expuesto al frontend para mostrar ventana en eventos criticos.",
+          "impact": 9,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #30]"
         }
       ]
     },
@@ -706,10 +766,11 @@
           "impact": 9,
           "effort": 5,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "frontend/src-tauri/src/audio/transcription/deepgram_provider.rs"
-          ]
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
         },
         {
           "id": "STT-002",
@@ -839,11 +900,12 @@
           "impact": 9,
           "effort": 5,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "backend/app/transcript_processor.py",
             "https://github.com/openai/tiktoken"
-          ]
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
         },
         {
           "id": "LLM-002",
@@ -948,10 +1010,11 @@
           "impact": 9,
           "effort": 4,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             ".github/workflows/build-windows.yml"
-          ]
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
         },
         {
           "id": "OPS-002",
@@ -962,10 +1025,11 @@
           "impact": 8,
           "effort": 4,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             ".github/workflows/release.yml"
-          ]
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
         },
         {
           "id": "OPS-003",
@@ -1127,11 +1191,12 @@
           "impact": 10,
           "effort": 5,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://www.justia.com/50-state-surveys/recording-phone-calls-and-conversations/",
             "https://gdpr-info.eu/art-6-gdpr/"
-          ]
+          ],
+          "notes": "[2026-04-08 iter #28] docs/legal/TWO_PARTY_CONSENT_FLOW.md draft by agent"
         },
         {
           "id": "LEG-003",
@@ -1270,11 +1335,12 @@
           "impact": 10,
           "effort": 4,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://deepgram.com/pricing",
             "https://openai.com/api/pricing/"
-          ]
+          ],
+          "notes": "[2026-04-08 iter #28] docs/business/UNIT_ECONOMICS.md draft by agent"
         },
         {
           "id": "BIZ-004",
@@ -1528,10 +1594,11 @@
           "impact": 10,
           "effort": 5,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://github.com/openai/whisper#available-models"
-          ]
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
         },
         {
           "id": "PERF-004",
@@ -1601,6 +1668,54 @@
           "status": "in-progress",
           "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/22",
           "references": []
+        },
+        {
+          "id": "PERF-005-FIX",
+          "title": "PERF-005 fix: leer modelo de config + discover_models antes de preload",
+          "severity": "critical",
+          "description": "El preload del modelo Parakeet fallaba silenciosamente porque: (1) hardcodeaba 'parakeet-tdt-0.6b-v2' pero el modelo real es 'parakeet-tdt-0.6b-v3-int8', (2) no llamaba discover_models() antes de load_model() dejando available_models vacio. Resultado: usuario experimentaba 4-5s de lazy load al primer click en Grabar.",
+          "recommendation": "Leer transcript_config de DB para obtener el model name real. Llamar engine.discover_models() antes de engine.load_model() en el startup.",
+          "impact": 10,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #29] Verificado en logs: preload exitoso en 2s (2:28:05 start -> 2:28:07 complete)"
+        },
+        {
+          "id": "PERF-VAD-LATENCY",
+          "title": "QW-1 audit: VAD 800/1000ms -> 300/400ms",
+          "severity": "high",
+          "description": "Audit transcripcion identifico que MIN_SPEECH_MS=800 y MIN_SILENCE_MS=1000 eran demasiado conservadores, generando 1.6-2.3s de latencia antes del primer texto en pantalla. Reducir a 300/400 recorta ~1.1s de latencia percibida.",
+          "recommendation": "vad.rs:50-51 constantes del tuning UX-011 reducidas. Mas chunks cortos, pero filtro UX-013 descarta hallucinations.",
+          "impact": 8,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #30] Audit QW-1 aplicado"
+        },
+        {
+          "id": "PERF-CHUNK-ACCUMULATOR",
+          "title": "QW-4 audit: ChunkAccumulator tiers unificados a 0.3/4.0/400ms",
+          "severity": "high",
+          "description": "Audit encontro que hardware potente tenia min_duration y flush_timeout MAS ALTOS que hardware debil, haciendo laptops Ultra mas laggy que Low. Unificado a (0.3, 4.0, 400ms) para todos los tiers.",
+          "recommendation": "worker.rs:550-555 elimino la logica per-tier.",
+          "impact": 7,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #30] Audit QW-4 aplicado"
+        },
+        {
+          "id": "TRANSCRIPTION-AUDIT",
+          "title": "Audit completo del pipeline de transcripcion vs competidores moviles",
+          "severity": "high",
+          "description": "Agente general-purpose entrego docs/audit/TRANSCRIPTION_OPTIMIZATION_AUDIT.md (274 lineas) con 8 problemas identificados (P-1 a P-8), 5 quick wins (QW-1 a QW-5) y 4 movimientos estrategicos. Hallazgo critico P-1: Parakeet 0.6B v3 es solo ingles, el usuario espanol obtiene basura que el filtro borra silenciosamente.",
+          "recommendation": "Ver docs/audit/TRANSCRIPTION_OPTIMIZATION_AUDIT.md. Prioridad: default a Deepgram para es-*, aplicar QW-2 (2 workers), QW-3 (DirectML execution provider).",
+          "impact": 10,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #30] QW-1 y QW-4 aplicados en esta rama, QW-2/3/5 pendientes"
         }
       ]
     }

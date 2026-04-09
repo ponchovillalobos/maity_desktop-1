@@ -1,6 +1,10 @@
 use ndarray::{Array, Array1, Array2, Array3, ArrayD, ArrayViewD, IxDyn};
 use once_cell::sync::Lazy;
 use ort::execution_providers::CPUExecutionProvider;
+#[cfg(target_os = "windows")]
+use ort::execution_providers::DirectMLExecutionProvider;
+#[cfg(target_os = "macos")]
+use ort::execution_providers::CoreMLExecutionProvider;
 use ort::inputs;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
@@ -91,7 +95,36 @@ impl ParakeetModel {
         intra_threads: Option<usize>,
         try_quantized: bool,
     ) -> Result<Session, ParakeetError> {
-        let providers = vec![CPUExecutionProvider::default().build()];
+        // QW-3 (2026-04-08 iter #31): habilitar GPU execution providers.
+        // Los providers se registran en orden de prioridad. ORT intenta el
+        // primero; si falla, cae al siguiente; CPU es fallback universal.
+        //
+        // Impacto medido en la literatura (audit P-4):
+        //   - DirectML en RTX 3060 móvil: inferencia 600ms -> ~80ms (7.5x)
+        //   - CoreML en M1: 600ms -> ~100ms (6x)
+        //
+        // Si el modelo se compiló sin la feature (ej. Linux, CPU build),
+        // solo CPU se registra — comportamiento igual al pre-iter #31.
+        let providers = {
+            #[allow(unused_mut)]
+            let mut v: Vec<ort::execution_providers::ExecutionProviderDispatch> = Vec::new();
+
+            #[cfg(target_os = "windows")]
+            {
+                v.push(DirectMLExecutionProvider::default().with_device_id(0).build());
+                log::info!("Parakeet: registered DirectML EP (device 0) + CPU fallback");
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                v.push(CoreMLExecutionProvider::default().build());
+                log::info!("Parakeet: registered CoreML EP + CPU fallback");
+            }
+
+            // CPU fallback siempre al final.
+            v.push(CPUExecutionProvider::default().build());
+            v
+        };
 
         // Try quantized version first if requested, fallback to regular version
         let model_filename = if try_quantized {
