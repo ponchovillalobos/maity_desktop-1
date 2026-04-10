@@ -1,0 +1,73 @@
+{
+  "audio_id": "D",
+  "audio_file": "D_Poncho_Solo.wav",
+  "duration_sec": 260.0,
+  "speakers": {
+    "Poncho": { "role": "user", "enrollment_source": false }
+  },
+  "segments": [
+    {
+      "speaker": "Poncho",
+      "text": "Estado trabajando en los detalles. Del proyecto 2026, que definitivamente incluyen inteligencia artificial y estoy armando la nueva aplicación del dispositivo y varios elementos de capacitación para 2026 en las empresas. Y estaba leyendo el artículo que hay un punto al que hemos llegado. O sea, 2026 Hemos llegado a un punto de no retorno en lo que respecta a la inteligencia artificial.",
+      "start_sec": 2.8,
+      "end_sec": 36.4,
+      "is_user": true
+    },
+    {
+      "speaker": "Poncho",
+      "text": "¿Cuál es ese punto de no retorno? Si el ser humano hay hoy en día, si aproximadamente un 30% de las personas prefieren revelar las partes más profundas, íntimas, las partes más vulnerables a la inteligencia artificial que a un humano.",
+      "start_sec": 36.47,
+      "end_sec": 63.97,
+      "is_user": true
+    },
+    {
+      "speaker": "Poncho",
+      "text": "Es potente. Me impactó el dato. Por qué estamos en un. ¿En un mundo donde las empresas buscan vender, comunicar, acercarse al humano sin fricción? Eso significa que el humano no le cueste nada, o sea, que sea un clic y tiene acceso un clic y tiene la información, un clic y compra y vende y bla bla bla y viaja y etcétera y pide un vehículo.",
+      "start_sec": 64.03,
+      "end_sec": 96.17,
+      "is_user": true
+    },
+    {
+      "speaker": "Poncho",
+      "text": "Hemos diseñado la tecnología para que la comunicación sea cero fricción.",
+      "start_sec": 96.27,
+      "end_sec": 106.4,
+      "is_user": true
+    },
+    {
+      "speaker": "Poncho",
+      "text": "Y lo que pasa con esto es que cuando hay fricción y hablo fricción, no de que sea solo difícil, sino que haya fricción emocional, que me cueste un poco, que sienta estrés, que sienta ansiedad, que no me guste. No lo voy a hacer. Entonces, si te pones a pensar, hablar con una máquina es más fácil porque no hay fricción, no hay evaluación, no hay crítica, no hay una emoción del lado de la máquina y esto evita fricción al humano.",
+      "start_sec": 106.47,
+      "end_sec": 138.07,
+      "is_user": true
+    },
+    {
+      "speaker": "Poncho",
+      "text": "Entonces me siento más cómodo hablando contigo que eres víctima.",
+      "start_sec": 138.07,
+      "end_sec": 144.23,
+      "is_user": true
+    },
+    {
+      "speaker": "Poncho",
+      "text": "Y eso no es lo más fuerte que me llamó la atención, porque yo estoy diseñando una aplicación y tengo que incorporar esos elementos de cero fricción. Que el humano sea adicto a la aplicación. Pero hay un punto importante y es que se adicto a mejorar su capacidad humana. En este mundo donde la cero fricción decrementa nuestras habilidades. Yo estoy buscando cómo le hago que esta adicción fortalezca el talento humano.",
+      "start_sec": 144.33,
+      "end_sec": 182.17,
+      "is_user": true
+    },
+    {
+      "speaker": "Poncho",
+      "text": "El dato más impactante que me llamó la atención es que en este mundo que está impulsado por inteligencia artificial, la. La perfección de la inteligencia artificial al comunicar la perfección o la casi perfección entre comillas, desplaza. Si la. Los errores, la incongruencia, las muletillas, las pausas mentales, las desplaza las del ser humano y las determina como deficiencias, o sea, lo más bello del ser humano, que es equivocarse, que es trabarse, que es equivocarse.",
+      "start_sec": 182.27,
+      "end_sec": 226.77,
+      "is_user": true
+    },
+    {
+      "speaker": "Poncho",
+      "text": "Ahora está siendo desplazada por la IA, porque ahora, en un mundo donde parece ser perfecto, sin fricción, sin errores, prefiero eso. Y lo mío, que es un poco más imperfecto, pues no lo uso. Sin embargo, ahí es donde estoy trabajando la imperfección humana, la parte de error humano puede convertirse en lo más bello de los seres humanos. Y eso será la chamba del trabajo de 2026.",
+      "start_sec": 226.83,
+      "end_sec": 259.1,
+      "is_user": true
+    }
+  ]
+}

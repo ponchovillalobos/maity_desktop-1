@@ -1,0 +1,15 @@
+{
+  "audio": "audio_c",
+  "description": "Poncho + Luciano (14:45)",
+  "ground_truth_words": 1978,
+  "results": [
+    {
+      "model": "Faster-Whisper large-v3-turbo (INT8)",
+      "wer": 0.07785642062689585,
+      "segments": 138,
+      "time_sec": 27.313035488128662,
+      "rtf": 0.03085549291919568,
+      "load_time_sec": 4.411478281021118
+    }
+  ]
+}

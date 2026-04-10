@@ -21,7 +21,10 @@ pub fn encode_single_audio(
     channels: u16,
     output_path: &PathBuf,
 ) -> anyhow::Result<()> {
-    debug!("Starting FFmpeg process for {} bytes of audio data", data.len());
+    debug!(
+        "Starting FFmpeg process for {} bytes of audio data",
+        data.len()
+    );
 
     if data.is_empty() {
         return Err(anyhow::anyhow!("No audio data provided for encoding"));
@@ -54,7 +57,9 @@ pub fn encode_single_audio(
             "+faststart", // Optimize for web streaming
             "-f",
             "mp4",
-            output_path.to_str().ok_or_else(|| anyhow::anyhow!("Output path contains invalid UTF-8: {:?}", output_path))?,
+            output_path.to_str().ok_or_else(|| {
+                anyhow::anyhow!("Output path contains invalid UTF-8: {:?}", output_path)
+            })?,
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -71,16 +76,23 @@ pub fn encode_single_audio(
     debug!("FFmpeg command: {:?}", command);
 
     #[allow(clippy::zombie_processes)]
-    let mut ffmpeg = command.spawn().map_err(|e| anyhow::anyhow!("Failed to spawn FFmpeg process: {}", e))?;
+    let mut ffmpeg = command
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("Failed to spawn FFmpeg process: {}", e))?;
     debug!("FFmpeg process spawned");
-    let mut stdin = ffmpeg.stdin.take().ok_or_else(|| anyhow::anyhow!("Failed to open FFmpeg stdin pipe"))?;
+    let mut stdin = ffmpeg
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to open FFmpeg stdin pipe"))?;
 
     stdin.write_all(data)?;
 
     debug!("Dropping stdin");
     drop(stdin);
     debug!("Waiting for FFmpeg process to exit");
-    let output = ffmpeg.wait_with_output().map_err(|e| anyhow::anyhow!("Failed to wait for FFmpeg process: {}", e))?;
+    let output = ffmpeg
+        .wait_with_output()
+        .map_err(|e| anyhow::anyhow!("Failed to wait for FFmpeg process: {}", e))?;
     let status = output.status;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);

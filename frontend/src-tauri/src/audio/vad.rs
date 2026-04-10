@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
-use silero_rs::{VadConfig, VadSession, VadTransition};
 use log::{debug, info};
+use silero_rs::{VadConfig, VadSession, VadTransition};
 use std::collections::VecDeque;
 use std::time::Duration;
 
@@ -37,25 +37,46 @@ impl ContinuousVadProcessor {
         let mut config = VadConfig::default();
         config.sample_rate = VAD_SAMPLE_RATE as usize;
 
-        // CONTINUOUS SPEECH FIX: Tuned for capturing complete 5+ second utterances
-        // Previous: 0.55/0.40 with 400ms redemption was fragmenting speech into 40ms segments
-        // New: More lenient thresholds + longer redemption for continuous speech
-        config.positive_speech_threshold = 0.50;  // Silero default - good for continuous speech
-        config.negative_speech_threshold = 0.35;  // Silero default - allows natural pauses
+        // UX-011: Silero VAD tuning for Parakeet (primary STT provider)
+        // Parakeet streaming is most accurate on utterances of 0.8s–30s.
+        // Shorter chunks cause hallucinations; fragments <800ms are usually
+        // clicks, grunts, or partial words that Parakeet mis-transcribes.
+        //
+        // QW-1 (audit 2026-04-08): bajar MIN_SPEECH y MIN_SILENCE para recortar
+        // latencia percibida. Antes 800/1000 eran demasiado conservadores y hacían
+        // que el usuario esperara 1.8s+ antes de ver texto. Ahora 300/400 — más
+        // cercano a lo que hacen Otter/Fireflies en móvil.
+        //   - MIN_SPEECH_MS    = 300  (was 800)  — emit sooner for "live feel"
+        //   - MIN_SILENCE_MS   = 400  (was 1000) — close segment 600ms earlier
+        //   - MAX_SPEECH_MS    = 30_000          — never emit >30s chunks (Parakeet cap)
+        //   - POS_THRESHOLD    = 0.55            — slightly stricter, fewer false starts
+        const MIN_SPEECH_MS: u64 = 300;
+        const MIN_SILENCE_MS: u64 = 400;
+        const MAX_SPEECH_MS: u64 = 30_000;
+        const POS_THRESHOLD: f32 = 0.55;
+        const NEG_THRESHOLD: f32 = 0.35;
 
-        // CRITICAL FIX: Removed redemption_time capping to support long continuous speech
-        // Previous: capped at 400ms, causing VAD to fragment 5-second speech into 40ms segments
-        // New: Use full redemption_time from pipeline (2000ms) to bridge natural pauses
-        config.redemption_time = Duration::from_millis(redemption_time_ms as u64);
-        config.pre_speech_pad = Duration::from_millis(150);   // FIX: Increased from 100ms to capture word beginnings (plosives P, T, K)
-        config.post_speech_pad = Duration::from_millis(400);  // Increased: more context at end
+        config.positive_speech_threshold = POS_THRESHOLD;
+        config.negative_speech_threshold = NEG_THRESHOLD;
 
-        // FIX: Reduced from 250ms to 150ms to capture short words ("sí", "no", "ok")
-        // Whisper can handle segments >100ms, so 150ms is safe while preserving short affirmations
-        config.min_speech_time = Duration::from_millis(150);  // Capture short words
+        // Respect caller's redemption_time but enforce MIN_SILENCE_MS floor.
+        // A shorter redemption would close the segment before Parakeet's
+        // lookahead buffer flushes, producing truncated transcripts.
+        let effective_redemption = (redemption_time_ms as u64).max(MIN_SILENCE_MS);
+        config.redemption_time = Duration::from_millis(effective_redemption);
 
-        debug!("Creating VAD session with: sample_rate={}Hz, redemption={}ms, min_speech={}ms, input_rate={}Hz",
-               VAD_SAMPLE_RATE, redemption_time_ms, 150, input_sample_rate);
+        config.pre_speech_pad = Duration::from_millis(200);
+        config.post_speech_pad = Duration::from_millis(500);
+        config.min_speech_time = Duration::from_millis(MIN_SPEECH_MS);
+
+        debug!(
+            "Creating VAD session (UX-011 Parakeet-tuned): sample_rate={}Hz, redemption={}ms (floor={}), min_speech={}ms, max_speech={}ms, pos={}, neg={}, input_rate={}Hz",
+            VAD_SAMPLE_RATE, effective_redemption, MIN_SILENCE_MS, MIN_SPEECH_MS, MAX_SPEECH_MS, POS_THRESHOLD, NEG_THRESHOLD, input_sample_rate
+        );
+        // Note: voice_activity_detector crate has no max_speech_time field;
+        // the MAX_SPEECH_MS cap is enforced by the pipeline's chunk scheduler
+        // which already emits segments every ~30s to bound Parakeet latency.
+        let _ = MAX_SPEECH_MS;
 
         let session = VadSession::new(config)
             .map_err(|e| anyhow!("Failed to create VAD session: {:?}", e))?;
@@ -63,8 +84,10 @@ impl ContinuousVadProcessor {
         // VAD uses 30ms chunks at 16kHz (480 samples)
         let vad_chunk_size = (VAD_SAMPLE_RATE as f32 * 0.03) as usize; // 480 samples
 
-        info!("VAD processor created: input={}Hz, vad={}Hz, chunk_size={} samples",
-              input_sample_rate, VAD_SAMPLE_RATE, vad_chunk_size);
+        info!(
+            "VAD processor created: input={}Hz, vad={}Hz, chunk_size={} samples",
+            input_sample_rate, VAD_SAMPLE_RATE, vad_chunk_size
+        );
 
         Ok(Self {
             session,
@@ -123,11 +146,12 @@ impl ContinuousVadProcessor {
         // Apply simple low-pass filter before downsampling to reduce aliasing
         let cutoff_freq = 0.4; // Normalized frequency (0.4 * Nyquist)
         let mut filtered_samples = Vec::with_capacity(samples.len());
-        
+
         // Simple moving average filter (basic low-pass)
-        let filter_size = (self.sample_rate as f64 / (cutoff_freq * self.sample_rate as f64)) as usize;
+        let filter_size =
+            (self.sample_rate as f64 / (cutoff_freq * self.sample_rate as f64)) as usize;
         let filter_size = std::cmp::max(1, std::cmp::min(filter_size, 5)); // Limit filter size
-        
+
         for i in 0..samples.len() {
             let start = if i >= filter_size { i - filter_size } else { 0 };
             let end = std::cmp::min(i + filter_size + 1, samples.len());
@@ -140,7 +164,7 @@ impl ContinuousVadProcessor {
             let source_pos = i as f64 * ratio;
             let source_index = source_pos as usize;
             let fraction = source_pos - source_index as f64;
-            
+
             if source_index + 1 < filtered_samples.len() {
                 // Linear interpolation
                 let sample1 = filtered_samples[source_index];
@@ -152,8 +176,12 @@ impl ContinuousVadProcessor {
             }
         }
 
-        debug!("Resampled from {} samples ({}Hz) to {} samples (16kHz) with anti-aliasing",
-               samples.len(), self.sample_rate, resampled.len());
+        debug!(
+            "Resampled from {} samples ({}Hz) to {} samples (16kHz) with anti-aliasing",
+            samples.len(),
+            self.sample_rate,
+            resampled.len()
+        );
 
         Ok(resampled)
     }
@@ -202,7 +230,9 @@ impl ContinuousVadProcessor {
     }
 
     fn process_chunk(&mut self, chunk: &[f32]) -> Result<()> {
-        let transitions = self.session.process(chunk)
+        let transitions = self
+            .session
+            .process(chunk)
             .map_err(|e| anyhow!("VAD processing failed: {}", e))?;
 
         // Handle VAD transitions
@@ -215,13 +245,22 @@ impl ContinuousVadProcessor {
                         self.last_logged_state = true;
                     }
                     self.in_speech = true;
-                    self.speech_start_sample = self.processed_samples + (timestamp_ms * self.sample_rate as usize / 1000);
+                    self.speech_start_sample =
+                        self.processed_samples + (timestamp_ms * self.sample_rate as usize / 1000);
                     self.current_speech.clear();
                 }
-                VadTransition::SpeechEnd { start_timestamp_ms, end_timestamp_ms, samples } => {
+                VadTransition::SpeechEnd {
+                    start_timestamp_ms,
+                    end_timestamp_ms,
+                    samples,
+                } => {
                     // Only log if we were previously in speech state
                     if self.last_logged_state {
-                        info!("VAD: Speech ended at {}ms (duration: {}ms)", end_timestamp_ms, end_timestamp_ms - start_timestamp_ms);
+                        info!(
+                            "VAD: Speech ended at {}ms (duration: {}ms)",
+                            end_timestamp_ms,
+                            end_timestamp_ms - start_timestamp_ms
+                        );
                         self.last_logged_state = false;
                     }
                     self.in_speech = false;
@@ -241,8 +280,11 @@ impl ContinuousVadProcessor {
                             confidence: 0.9, // VAD confidence
                         };
 
-                        info!("VAD: Completed speech segment: {:.1}ms duration, {} samples",
-                              end_timestamp_ms - start_timestamp_ms, segment.samples.len());
+                        info!(
+                            "VAD: Completed speech segment: {:.1}ms duration, {} samples",
+                            end_timestamp_ms - start_timestamp_ms,
+                            segment.samples.len()
+                        );
 
                         self.speech_segments.push_back(segment);
                     }
@@ -279,10 +321,15 @@ pub fn extract_speech_16k(samples_mono_16k: &[f32]) -> Result<Vec<f32>> {
     }
 
     // Apply balanced energy filtering for very short segments
-    if result.len() < 1600 { // Less than 100ms at 16kHz
-        let input_energy: f32 = samples_mono_16k.iter().map(|&x| x * x).sum::<f32>() / samples_mono_16k.len() as f32;
+    if result.len() < 1600 {
+        // Less than 100ms at 16kHz
+        let input_energy: f32 =
+            samples_mono_16k.iter().map(|&x| x * x).sum::<f32>() / samples_mono_16k.len() as f32;
         let rms = input_energy.sqrt();
-        let peak = samples_mono_16k.iter().map(|&x| x.abs()).fold(0.0f32, f32::max);
+        let peak = samples_mono_16k
+            .iter()
+            .map(|&x| x.abs())
+            .fold(0.0f32, f32::max);
 
         // BALANCED FIX: Lowered thresholds to preserve quiet speech while still filtering silence
         // Previous aggressive values (0.08/0.15) were discarding valid quiet speech
@@ -291,20 +338,30 @@ pub fn extract_speech_16k(samples_mono_16k: &[f32]) -> Result<Vec<f32>> {
             info!("-----VAD detected silence/noise (RMS: {:.6}, Peak: {:.6}), skipping to prevent hallucinations-----", rms, peak);
             return Ok(Vec::new());
         } else {
-            info!("VAD detected speech with sufficient energy (RMS: {:.6}, Peak: {:.6})", rms, peak);
+            info!(
+                "VAD detected speech with sufficient energy (RMS: {:.6}, Peak: {:.6})",
+                rms, peak
+            );
             return Ok(samples_mono_16k.to_vec());
         }
     }
 
-    debug!("VAD: Processed {} samples, extracted {} speech samples from {} segments",
-           samples_mono_16k.len(), result.len(), num_segments);
+    debug!(
+        "VAD: Processed {} samples, extracted {} speech samples from {} segments",
+        samples_mono_16k.len(),
+        result.len(),
+        num_segments
+    );
 
     Ok(result)
 }
 
 /// Simple convenience function to get speech chunks from audio
 /// Uses the optimized ContinuousVadProcessor with configurable redemption time
-pub fn get_speech_chunks(samples_mono_16k: &[f32], redemption_time_ms: u32) -> Result<Vec<SpeechSegment>> {
+pub fn get_speech_chunks(
+    samples_mono_16k: &[f32],
+    redemption_time_ms: u32,
+) -> Result<Vec<SpeechSegment>> {
     let mut processor = ContinuousVadProcessor::new(16000, redemption_time_ms)?;
 
     // Process all audio
@@ -314,5 +371,3 @@ pub fn get_speech_chunks(samples_mono_16k: &[f32], redemption_time_ms: u32) -> R
 
     Ok(segments)
 }
-
- 

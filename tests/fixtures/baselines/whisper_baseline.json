@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-04-07T22:38:02",
+  "server_url": "http://localhost:8765",
+  "model": "large-v3-turbo",
+  "results": {
+    "A": {
+      "audio_id": "A",
+      "wav": "A_Poncho_Mensaje.wav",
+      "wer": 0.030211,
+      "latency_ms": 9826.8,
+      "segments_count": 11,
+      "full_text_hash": "d668b56f70446fb8",
+      "ref_words": 331,
+      "hyp_words": 327
+    },
+    "B": {
+      "audio_id": "B",
+      "wav": "B_Poncho_Liz.wav",
+      "wer": 0.096143,
+      "latency_ms": 39568.8,
+      "segments_count": 161,
+      "full_text_hash": "b64c7b37a6b8ea79",
+      "ref_words": 1737,
+      "hyp_words": 1770
+    },
+    "C": {
+      "audio_id": "C",
+      "wav": "C_Poncho_Luciano.wav",
+      "wer": 0.077856,
+      "latency_ms": 37661.5,
+      "segments_count": 138,
+      "full_text_hash": "86778601607dd3ac",
+      "ref_words": 1978,
+      "hyp_words": 1891
+    },
+    "D": {
+      "audio_id": "D",
+      "wav": "D_Poncho_Solo.wav",
+      "wer": 0.052632,
+      "latency_ms": 11311.6,
+      "segments_count": 25,
+      "full_text_hash": "7ed573c0948db858",
+      "ref_words": 494,
+      "hyp_words": 497
+    }
+  }
+}

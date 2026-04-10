@@ -7,20 +7,13 @@ use log::{error, info, warn};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
-use super::{
-    parse_audio_device,
-    default_input_device,
-    default_output_device,
-    RecordingManager,
-};
+use super::{default_input_device, default_output_device, parse_audio_device, RecordingManager};
 
-use super::transcription::{
-    self,
-    reset_speech_detected_flag,
-    TranscriptUpdate,
-};
+use super::transcription::{self, reset_speech_detected_flag, TranscriptUpdate};
 
-use super::recording_lifecycle::{RECORDING_MANAGER, TRANSCRIPTION_TASK, TRANSCRIPT_LISTENER_ID, set_recording_flag};
+use super::recording_lifecycle::{
+    set_recording_flag, RECORDING_MANAGER, TRANSCRIPTION_TASK, TRANSCRIPT_LISTENER_ID,
+};
 
 /// Result of device resolution for recording
 pub struct ResolvedDevices {
@@ -29,7 +22,9 @@ pub struct ResolvedDevices {
 }
 
 /// Resolve microphone device from preference name or fallback to default
-pub fn resolve_microphone_from_preference(preferred_name: Option<String>) -> Result<Option<Arc<super::devices::AudioDevice>>, String> {
+pub fn resolve_microphone_from_preference(
+    preferred_name: Option<String>,
+) -> Result<Option<Arc<super::devices::AudioDevice>>, String> {
     match preferred_name {
         Some(pref_name) => {
             info!("🎤 Attempting to use preferred microphone: '{}'", pref_name);
@@ -39,7 +34,10 @@ pub fn resolve_microphone_from_preference(preferred_name: Option<String>) -> Res
                     Ok(Some(Arc::new(device)))
                 }
                 Err(e) => {
-                    warn!("⚠️ Preferred microphone '{}' not available: {}", pref_name, e);
+                    warn!(
+                        "⚠️ Preferred microphone '{}' not available: {}",
+                        pref_name, e
+                    );
                     warn!("   Falling back to system default microphone...");
                     match default_input_device() {
                         Ok(device) => {
@@ -47,7 +45,9 @@ pub fn resolve_microphone_from_preference(preferred_name: Option<String>) -> Res
                             Ok(Some(Arc::new(device)))
                         }
                         Err(default_err) => {
-                            error!("❌ No microphone available (preferred and default both failed)");
+                            error!(
+                                "❌ No microphone available (preferred and default both failed)"
+                            );
                             Err(format!(
                                 "No microphone device available. Preferred device '{}' not found, and default microphone unavailable: {}",
                                 pref_name, default_err
@@ -75,17 +75,25 @@ pub fn resolve_microphone_from_preference(preferred_name: Option<String>) -> Res
 
 /// Resolve system audio device from preference name or fallback to default
 /// System audio is optional - returns None if unavailable
-pub fn resolve_system_audio_from_preference(preferred_name: Option<String>) -> Option<Arc<super::devices::AudioDevice>> {
+pub fn resolve_system_audio_from_preference(
+    preferred_name: Option<String>,
+) -> Option<Arc<super::devices::AudioDevice>> {
     match preferred_name {
         Some(pref_name) => {
-            info!("🔊 Attempting to use preferred system audio: '{}'", pref_name);
+            info!(
+                "🔊 Attempting to use preferred system audio: '{}'",
+                pref_name
+            );
             match parse_audio_device(&pref_name) {
                 Ok(device) => {
                     info!("✅ Using preferred system audio: '{}'", device.name);
                     Some(Arc::new(device))
                 }
                 Err(e) => {
-                    warn!("⚠️ Preferred system audio '{}' not available: {}", pref_name, e);
+                    warn!(
+                        "⚠️ Preferred system audio '{}' not available: {}",
+                        pref_name, e
+                    );
                     warn!("   Falling back to system default...");
                     match default_output_device() {
                         Ok(device) => {
@@ -139,7 +147,10 @@ pub fn parse_explicit_devices(
         None
     };
 
-    Ok(ResolvedDevices { microphone, system_audio })
+    Ok(ResolvedDevices {
+        microphone,
+        system_audio,
+    })
 }
 
 /// Initialize recording manager, start recording, store global state, and register event listeners.
@@ -157,10 +168,7 @@ pub async fn initialize_recording<R: Runtime>(
     // Generate effective meeting name
     let effective_meeting_name = meeting_name.unwrap_or_else(|| {
         let now = chrono::Local::now();
-        format!(
-            "Reunión {}",
-            now.format("%Y-%m-%d_%H-%M-%S")
-        )
+        format!("Reunión {}", now.format("%Y-%m-%d_%H-%M-%S"))
     });
     manager.set_meeting_name(Some(effective_meeting_name));
 
@@ -181,7 +189,9 @@ pub async fn initialize_recording<R: Runtime>(
 
     // Store the manager globally to keep it alive
     {
-        let mut global_manager = RECORDING_MANAGER.lock().map_err(|e| format!("Recording manager lock poisoned: {}", e))?;
+        let mut global_manager = RECORDING_MANAGER
+            .lock()
+            .map_err(|e| format!("Recording manager lock poisoned: {}", e))?;
         *global_manager = Some(manager);
     }
 
@@ -202,12 +212,15 @@ pub async fn initialize_recording<R: Runtime>(
                     break;
                 }
                 let (mic_rms, mic_peak, sys_rms, sys_peak) = state_for_levels.get_audio_levels();
-                let _ = app_for_levels.emit("recording-audio-levels", serde_json::json!({
-                    "micRms": mic_rms,
-                    "micPeak": mic_peak,
-                    "sysRms": sys_rms,
-                    "sysPeak": sys_peak,
-                }));
+                let _ = app_for_levels.emit(
+                    "recording-audio-levels",
+                    serde_json::json!({
+                        "micRms": mic_rms,
+                        "micPeak": mic_peak,
+                        "sysRms": sys_rms,
+                        "sysPeak": sys_peak,
+                    }),
+                );
             }
         });
     }
@@ -215,7 +228,9 @@ pub async fn initialize_recording<R: Runtime>(
     // Start optimized parallel transcription task and store handle
     let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver);
     {
-        let mut global_task = TRANSCRIPTION_TASK.lock().map_err(|e| format!("Transcription task lock poisoned: {}", e))?;
+        let mut global_task = TRANSCRIPTION_TASK
+            .lock()
+            .map_err(|e| format!("Transcription task lock poisoned: {}", e))?;
         *global_task = Some(task_handle);
     }
 
@@ -256,7 +271,10 @@ fn register_transcript_listener<R: Runtime>(app: &AppHandle<R>) {
             info!("✅ Transcript-update event listener registered for history persistence");
         }
         Err(e) => {
-            warn!("⚠️ Failed to store transcript listener ID (lock poisoned): {}", e);
+            warn!(
+                "⚠️ Failed to store transcript listener ID (lock poisoned): {}",
+                e
+            );
         }
     }
 }
@@ -288,7 +306,8 @@ pub fn classify_device_type(device_name: &str) -> &'static str {
         || name_lower.contains("beats")
         || name_lower.contains("headphones")
         || name_lower.contains("bt ")
-        || name_lower.contains("wireless") {
+        || name_lower.contains("wireless")
+    {
         "Bluetooth"
     } else {
         "Wired"

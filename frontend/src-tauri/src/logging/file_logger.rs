@@ -5,8 +5,8 @@
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 static LOG_DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
 
@@ -62,8 +62,7 @@ pub fn init_file_logging(app_name: &str) -> anyhow::Result<()> {
         .with_target(true);
 
     // Set up the subscriber with env filter
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::registry()
         .with(filter)
@@ -78,8 +77,8 @@ pub fn init_file_logging(app_name: &str) -> anyhow::Result<()> {
 
 /// Get list of log files in the log directory
 pub fn list_log_files() -> anyhow::Result<Vec<PathBuf>> {
-    let log_dir = get_log_directory()
-        .ok_or_else(|| anyhow::anyhow!("Log directory not initialized"))?;
+    let log_dir =
+        get_log_directory().ok_or_else(|| anyhow::anyhow!("Log directory not initialized"))?;
 
     let mut files = Vec::new();
     for entry in std::fs::read_dir(&log_dir)? {
