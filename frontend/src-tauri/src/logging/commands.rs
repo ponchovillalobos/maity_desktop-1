@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager, Runtime};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-use super::file_logger::{get_log_directory, list_log_files, get_logs_total_size};
+use super::file_logger::{get_log_directory, get_logs_total_size, list_log_files};
 use crate::database::repositories::recording_log::RecordingLogRepository;
 use crate::state::AppState;
 
@@ -179,15 +179,24 @@ fn generate_system_info() -> String {
     let mut info = String::new();
 
     info.push_str("=== Maity Desktop System Info ===\n\n");
-    info.push_str(&format!("Generated: {}\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+    info.push_str(&format!(
+        "Generated: {}\n",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+    ));
     info.push_str(&format!("App Version: {}\n", env!("CARGO_PKG_VERSION")));
     info.push_str(&format!("OS: {}\n", std::env::consts::OS));
     info.push_str(&format!("Architecture: {}\n", std::env::consts::ARCH));
 
     // System memory info
     let sys = sysinfo::System::new_all();
-    info.push_str(&format!("Total Memory: {} MB\n", sys.total_memory() / 1024 / 1024));
-    info.push_str(&format!("Available Memory: {} MB\n", sys.available_memory() / 1024 / 1024));
+    info.push_str(&format!(
+        "Total Memory: {} MB\n",
+        sys.total_memory() / 1024 / 1024
+    ));
+    info.push_str(&format!(
+        "Available Memory: {} MB\n",
+        sys.available_memory() / 1024 / 1024
+    ));
     info.push_str(&format!("CPU Count: {}\n", sys.cpus().len()));
 
     if let Some(name) = sysinfo::System::name() {
@@ -205,8 +214,7 @@ fn generate_system_info() -> String {
 /// Open the log directory in the system file explorer
 #[tauri::command]
 pub async fn open_log_directory() -> Result<(), String> {
-    let log_dir = get_log_directory()
-        .ok_or_else(|| "Log directory not initialized".to_string())?;
+    let log_dir = get_log_directory().ok_or_else(|| "Log directory not initialized".to_string())?;
 
     #[cfg(target_os = "windows")]
     {

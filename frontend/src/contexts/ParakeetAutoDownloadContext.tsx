@@ -7,6 +7,10 @@ interface ParakeetAutoDownloadContextType {
   isModelReady: boolean;
   isDownloading: boolean;
   downloadProgress: number;
+  /** UX-LOADING-MODEL: modelo residente en memoria (listo para inference instantánea). */
+  isModelLoaded: boolean;
+  /** UX-LOADING-MODEL: preload del startup activo. */
+  isPreloading: boolean;
   error: string | null;
 }
 

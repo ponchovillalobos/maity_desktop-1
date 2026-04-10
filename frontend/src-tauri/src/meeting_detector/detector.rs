@@ -2,15 +2,15 @@
 //!
 //! Main detector that monitors for meetings and triggers notifications/recording.
 
-use std::sync::Arc;
-use tokio::sync::{RwLock, mpsc};
-use tokio::time::{Duration, interval};
-use tauri::{AppHandle, Emitter, Runtime};
-use log::{info, error, debug};
 use anyhow::Result;
+use log::{debug, error, info};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Runtime};
+use tokio::sync::{mpsc, RwLock};
+use tokio::time::{interval, Duration};
 
-use super::process_monitor::{ProcessMonitor, DetectedMeeting};
-use super::settings::{MeetingDetectorSettings, AppAction, load_settings, save_settings};
+use super::process_monitor::{DetectedMeeting, ProcessMonitor};
+use super::settings::{load_settings, save_settings, AppAction, MeetingDetectorSettings};
 
 /// Events emitted by the meeting detector
 #[derive(Debug, Clone, serde::Serialize)]
@@ -90,13 +90,7 @@ impl MeetingDetector {
 
         // Spawn the background monitoring task
         tokio::spawn(async move {
-            run_detector_loop(
-                app_handle,
-                settings,
-                process_monitor,
-                is_running,
-                rx,
-            ).await;
+            run_detector_loop(app_handle, settings, process_monitor, is_running, rx).await;
         });
 
         info!("Meeting detector started");
@@ -116,7 +110,9 @@ impl MeetingDetector {
     /// Send a command to the detector
     pub async fn send_command(&self, cmd: DetectorCommand) -> Result<()> {
         if let Some(tx) = &self.command_tx {
-            tx.send(cmd).await.map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))?;
+            tx.send(cmd)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))?;
         }
         Ok(())
     }
@@ -153,7 +149,8 @@ impl MeetingDetector {
     /// Check for meetings now (manual trigger)
     pub async fn check_now(&self) -> Result<()> {
         if let Some(tx) = &self.command_tx {
-            tx.send(DetectorCommand::CheckNow).await
+            tx.send(DetectorCommand::CheckNow)
+                .await
                 .map_err(|e| anyhow::anyhow!("Failed to send check command: {}", e))?;
         }
         Ok(())
@@ -197,10 +194,27 @@ async fn run_detector_loop<R: Runtime>(
                 // Detect new meetings
                 let detected = process_monitor.write().await.detect_meetings();
 
+                // UX-NO-DUPLICATE-PROMPT (2026-04-08):
+                // Si ya hay una grabación activa, NO emitimos el evento meeting-detected.
+                // Antes el usuario recibía el toast "¿Quieres grabar esta reunión?" aun
+                // cuando ya estaba grabando, y al hacer click se confundía con un start
+                // duplicado. Ahora silenciamos cualquier notificación mientras is_recording=true.
+                let currently_recording = crate::audio::recording_lifecycle::IS_RECORDING
+                    .load(std::sync::atomic::Ordering::SeqCst);
+
                 for meeting in detected {
                     // Check if this app is being monitored
                     if !current_settings.monitored_apps.is_monitored(&meeting.app) {
                         debug!("Ignoring {} - not monitored", meeting.app.display_name());
+                        continue;
+                    }
+
+                    // UX-NO-DUPLICATE-PROMPT: no molestar al usuario si ya está grabando.
+                    if currently_recording {
+                        debug!(
+                            "Meeting {} detected but recording already active — suppressing prompt",
+                            meeting.suggested_name
+                        );
                         continue;
                     }
 
@@ -310,5 +324,28 @@ async fn handle_user_response<R: Runtime>(
             info!("User chose to always auto-record this app");
             // Would need the app info to set this properly
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::Ordering;
+
+    /// UX-NO-DUPLICATE-PROMPT: valida que la bandera global IS_RECORDING
+    /// sea observable desde este módulo. El loop de detección lee este valor
+    /// antes de cada emit para suprimir notificaciones duplicadas durante una
+    /// grabación activa.
+    #[test]
+    fn test_is_recording_flag_is_readable_from_detector() {
+        // Estado inicial
+        crate::audio::recording_lifecycle::IS_RECORDING.store(false, Ordering::SeqCst);
+        assert!(!crate::audio::recording_lifecycle::IS_RECORDING.load(Ordering::SeqCst));
+
+        // Simular grabación activa
+        crate::audio::recording_lifecycle::IS_RECORDING.store(true, Ordering::SeqCst);
+        assert!(crate::audio::recording_lifecycle::IS_RECORDING.load(Ordering::SeqCst));
+
+        // Cleanup
+        crate::audio::recording_lifecycle::IS_RECORDING.store(false, Ordering::SeqCst);
     }
 }

@@ -29,6 +29,9 @@ interface RecordingControlsProps {
   onTranscriptionError?: (message: string) => void;
   onStopInitiated?: () => void; // Called immediately when stop button is clicked
   isRecordingDisabled: boolean;
+  /** UX-LOADING-MODEL: etiqueta opcional para cuando el botón esté deshabilitado
+   *  por precarga del modelo (ej. "Cargando modelo…"). Muestra spinner + tooltip claro. */
+  loadingLabel?: string;
   isParentProcessing: boolean;
   selectedDevices?: {
     micDevice: string | null;
@@ -48,6 +51,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   onTranscriptionError,
   onStopInitiated,
   isRecordingDisabled,
+  loadingLabel,
   isParentProcessing,
   selectedDevices,
   meetingName,
@@ -436,9 +440,11 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                           disabled={isBusy || isRecordingDisabled}
                           className={`w-12 h-12 flex items-center justify-center ${isBusy || isRecordingDisabled ? 'bg-[#8a8a8d]' : 'bg-[#ff0050] hover:bg-[#cc0040]'
                             } rounded-full text-white transition-colors relative`}
-                          aria-label="Iniciar grabación"
+                          aria-label={loadingLabel || 'Iniciar grabación'}
+                          aria-pressed={false}
+                          aria-busy={isValidatingModel || !!loadingLabel}
                         >
-                          {isValidatingModel ? (
+                          {isValidatingModel || loadingLabel ? (
                             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                           ) : (
                             <Mic size={20} />
@@ -446,7 +452,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Iniciar grabación</p>
+                        <p>{loadingLabel || 'Iniciar grabación'}</p>
                       </TooltipContent>
                     </Tooltip>
                   ) : (
@@ -470,10 +476,16 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                               : 'bg-white dark:bg-gray-800 border-2 border-[#d0d0d3] dark:border-gray-600 text-[#4a4a4c] dark:text-gray-300 hover:border-gray-400 hover:bg-[#f5f5f6] dark:hover:bg-gray-700'
                               } rounded-full transition-colors relative`}
                             aria-label={isPaused ? 'Reanudar grabación' : 'Pausar grabación'}
+                            aria-pressed={isPaused}
+                            aria-busy={isBusy}
                           >
                             {isPaused ? <Play size={16} /> : <Pause size={16} />}
                             {(isPausing || isResuming) && (
-                              <div className="absolute -top-8 text-[#4a4a4c] dark:text-gray-300 font-medium text-xs">
+                              <div
+                                className="absolute -top-8 text-[#4a4a4c] dark:text-gray-300 font-medium text-xs"
+                                role="status"
+                                aria-live="polite"
+                              >
                                 {isPausing ? 'Pausando...' : 'Reanudando...'}
                               </div>
                             )}

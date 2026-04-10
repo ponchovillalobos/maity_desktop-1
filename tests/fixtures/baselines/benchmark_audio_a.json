@@ -1,0 +1,23 @@
+{
+  "audio": "audio_a",
+  "description": "Poncho solo (2:35)",
+  "ground_truth_words": 331,
+  "results": [
+    {
+      "model": "Faster-Whisper large-v3 (INT8)",
+      "wer": 0.04833836858006042,
+      "segments": 16,
+      "time_sec": 18.961201190948486,
+      "rtf": 0.1221852845070915,
+      "load_time_sec": 7.688348770141602
+    },
+    {
+      "model": "Faster-Whisper large-v3-turbo (INT8)",
+      "wer": 0.030211480362537766,
+      "segments": 11,
+      "time_sec": 4.89592432975769,
+      "rtf": 0.03154915667696213,
+      "load_time_sec": 49.65355658531189
+    }
+  ]
+}

@@ -5,7 +5,7 @@
 // The endpoint evaluates the conversation, generates embeddings, memories,
 // and daily scores — all written directly to Supabase server-side.
 
-use log::{info, warn, error};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -100,10 +100,7 @@ pub async fn finalize_conversation_cloud(
 
     if status == reqwest::StatusCode::BAD_REQUEST {
         let body = response.text().await.unwrap_or_default();
-        warn!(
-            "Got 400 from conversations-finalize: {} - {}",
-            status, body
-        );
+        warn!("Got 400 from conversations-finalize: {} - {}", status, body);
         return Err(format!(
             "validation:La conversación no tiene segmentos de transcripción. ({})",
             body
@@ -143,10 +140,7 @@ pub async fn finalize_conversation_cloud(
             conversation_id, data.words_count, data.segments_count, data.discarded
         );
     } else {
-        warn!(
-            "conversations-finalize returned ok=false: {:?}",
-            data.error
-        );
+        warn!("conversations-finalize returned ok=false: {:?}", data.error);
     }
 
     Ok(data)

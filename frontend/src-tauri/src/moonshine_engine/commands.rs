@@ -1,8 +1,8 @@
-use crate::moonshine_engine::{ModelInfo, ModelStatus, MoonshineEngine, DownloadProgress};
+use crate::moonshine_engine::{DownloadProgress, ModelInfo, ModelStatus, MoonshineEngine};
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::Arc;
-use tauri::{command, Emitter, AppHandle, Manager, Runtime};
+use std::sync::Mutex;
+use tauri::{command, AppHandle, Emitter, Manager, Runtime};
 
 // Global moonshine engine
 pub static MOONSHINE_ENGINE: Mutex<Option<Arc<MoonshineEngine>>> = Mutex::new(None);
@@ -13,7 +13,9 @@ static MODELS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// Initialize the models directory path using app_data_dir
 /// This should be called during app setup before moonshine_init
 pub fn set_models_directory<R: Runtime>(app: &AppHandle<R>) {
-    let app_data_dir = app.path().app_data_dir()
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
         .expect("Failed to get app data dir");
 
     let models_dir = app_data_dir.join("models");
@@ -26,7 +28,10 @@ pub fn set_models_directory<R: Runtime>(app: &AppHandle<R>) {
         }
     }
 
-    log::info!("Moonshine models directory set to: {}", models_dir.display());
+    log::info!(
+        "Moonshine models directory set to: {}",
+        models_dir.display()
+    );
 
     let mut guard = MODELS_DIR.lock().unwrap();
     *guard = Some(models_dir);
@@ -71,7 +76,7 @@ pub async fn moonshine_get_available_models() -> Result<Vec<ModelInfo>, String> 
 #[command]
 pub async fn moonshine_load_model<R: Runtime>(
     app_handle: AppHandle<R>,
-    model_name: String
+    model_name: String,
 ) -> Result<(), String> {
     let engine = {
         let guard = MOONSHINE_ENGINE.lock().unwrap();
@@ -86,7 +91,10 @@ pub async fn moonshine_load_model<R: Runtime>(
                 "modelName": model_name
             }),
         ) {
-            log::error!("Failed to emit moonshine-model-loading-started event: {}", e);
+            log::error!(
+                "Failed to emit moonshine-model-loading-started event: {}",
+                e
+            );
         }
 
         let result = engine
@@ -102,7 +110,10 @@ pub async fn moonshine_load_model<R: Runtime>(
                     "modelName": model_name
                 }),
             ) {
-                log::error!("Failed to emit moonshine-model-loading-completed event: {}", e);
+                log::error!(
+                    "Failed to emit moonshine-model-loading-completed event: {}",
+                    e
+                );
             }
         } else if let Err(ref error) = result {
             if let Err(e) = app_handle.emit(
@@ -166,7 +177,12 @@ pub async fn moonshine_has_available_models() -> Result<bool, String> {
         // Check if at least one model is available
         let available_models: Vec<_> = models
             .iter()
-            .filter(|model| matches!(model.status, crate::moonshine_engine::ModelStatus::Available))
+            .filter(|model| {
+                matches!(
+                    model.status,
+                    crate::moonshine_engine::ModelStatus::Available
+                )
+            })
             .collect();
 
         Ok(!available_models.is_empty())
@@ -198,7 +214,12 @@ pub async fn moonshine_validate_model_ready() -> Result<String, String> {
 
         let available_models: Vec<_> = models
             .iter()
-            .filter(|model| matches!(model.status, crate::moonshine_engine::ModelStatus::Available))
+            .filter(|model| {
+                matches!(
+                    model.status,
+                    crate::moonshine_engine::ModelStatus::Available
+                )
+            })
             .collect();
 
         if available_models.is_empty() {
@@ -286,7 +307,12 @@ pub async fn moonshine_validate_model_ready_with_config<R: tauri::Runtime>(
 
         let available_models: Vec<_> = models
             .iter()
-            .filter(|model| matches!(model.status, crate::moonshine_engine::ModelStatus::Available))
+            .filter(|model| {
+                matches!(
+                    model.status,
+                    crate::moonshine_engine::ModelStatus::Available
+                )
+            })
             .collect();
 
         if available_models.is_empty() {
@@ -300,7 +326,10 @@ pub async fn moonshine_validate_model_ready_with_config<R: tauri::Runtime>(
         let model_name = if let Some(configured_model) = model_to_load {
             // Check if configured model is available
             if available_models.iter().any(|m| m.name == configured_model) {
-                log::info!("Loading user's configured Moonshine model: {}", configured_model);
+                log::info!(
+                    "Loading user's configured Moonshine model: {}",
+                    configured_model
+                );
                 configured_model
             } else {
                 log::warn!(
@@ -376,8 +405,11 @@ pub async fn moonshine_download_model<R: Runtime>(
         let progress_callback = Box::new(move |progress: DownloadProgress| {
             log::info!(
                 "Moonshine download progress for {}: {:.1} MB / {:.1} MB ({:.1} MB/s) - {}%",
-                model_name_clone, progress.downloaded_mb, progress.total_mb,
-                progress.speed_mbps, progress.percent
+                model_name_clone,
+                progress.downloaded_mb,
+                progress.total_mb,
+                progress.speed_mbps,
+                progress.percent
             );
 
             // Emit download progress event with detailed info
@@ -494,7 +526,10 @@ pub async fn moonshine_retry_download<R: Runtime>(
         {
             let mut active = engine.active_downloads.write().await;
             if active.contains(&model_name) {
-                log::warn!("Retry: Model {} was still in active downloads, removing", model_name);
+                log::warn!(
+                    "Retry: Model {} was still in active downloads, removing",
+                    model_name
+                );
                 active.remove(&model_name);
             }
         }
@@ -503,7 +538,11 @@ pub async fn moonshine_retry_download<R: Runtime>(
         {
             let mut models = engine.available_models.write().await;
             if let Some(model) = models.get_mut(&model_name) {
-                log::info!("Retry: Resetting model {} status from {:?} to Missing", model_name, model.status);
+                log::info!(
+                    "Retry: Resetting model {} status from {:?} to Missing",
+                    model_name,
+                    model.status
+                );
                 model.status = ModelStatus::Missing;
             }
         }

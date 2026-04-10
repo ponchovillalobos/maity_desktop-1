@@ -138,7 +138,8 @@ impl TranscriptsRepository {
 
                 let context_window = 100; // chars, not bytes
                 let start_char = match_char_index.saturating_sub(context_window);
-                let end_char = (match_char_index + query_char_len + context_window).min(total_chars);
+                let end_char =
+                    (match_char_index + query_char_len + context_window).min(total_chars);
 
                 let mut context = String::new();
                 if start_char > 0 {
