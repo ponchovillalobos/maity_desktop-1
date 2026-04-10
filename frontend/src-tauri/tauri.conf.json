@@ -46,9 +46,6 @@
                     ],
                     "permissions": [
                         "fs:default",
-                        "fs:allow-read-file",
-                        "fs:read-all",
-                        "fs:write-all",
                         "fs:allow-app-read",
                         "fs:allow-app-write",
                         "fs:allow-download-write",
@@ -72,7 +69,10 @@
                             "identifier": "fs:scope",
                             "allow": [
                                 {
-                                    "path": "$APPDATA/*"
+                                    "path": "$APPDATA/com.maity.ai/**"
+                                },
+                                {
+                                    "path": "$APPDATA/Maity/**"
                                 }
                             ]
                         }

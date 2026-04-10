@@ -4,9 +4,19 @@ import { listen } from '@tauri-apps/api/event';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface ParakeetAutoDownloadState {
+  /** Model is downloaded and ready on disk */
   isModelReady: boolean;
+  /** Model is currently downloading */
   isDownloading: boolean;
   downloadProgress: number;
+  /**
+   * UX-LOADING-MODEL (PERF-005): the model is loaded IN MEMORY and ready for inference.
+   * After startup preload, this flips to true — that's when the record button should
+   * become instant. If false AND isPreloading is true, show "Cargando modelo" state.
+   */
+  isModelLoaded: boolean;
+  /** Startup preload is currently running */
+  isPreloading: boolean;
   error: string | null;
 }
 
@@ -18,6 +28,9 @@ export function useParakeetAutoDownload(): ParakeetAutoDownloadState {
   const [isModelReady, setIsModelReady] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  // UX-LOADING-MODEL: estado separado para "cargado en memoria" vs "descargado en disco".
+  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [isPreloading, setIsPreloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasTriggered = useRef(false);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,6 +139,30 @@ export function useParakeetAutoDownload(): ParakeetAutoDownloadState {
         }, RETRY_DELAY_MS);
       });
       unlisteners.push(unError);
+
+      // UX-LOADING-MODEL (PERF-005): eventos emitidos por lib.rs durante el preload al arrancar
+      const unPreStart = await listen<any>('parakeet-model-preload-started', () => {
+        console.log('[ParakeetAutoDownload] Preload started');
+        setIsPreloading(true);
+        setIsModelLoaded(false);
+      });
+      unlisteners.push(unPreStart);
+
+      const unPreDone = await listen<any>('parakeet-model-preload-completed', () => {
+        console.log('[ParakeetAutoDownload] Preload completed — model in memory');
+        setIsPreloading(false);
+        setIsModelLoaded(true);
+        setIsModelReady(true);
+      });
+      unlisteners.push(unPreDone);
+
+      const unPreFail = await listen<any>('parakeet-model-preload-failed', (event) => {
+        const msg = event.payload?.error || 'Preload failed';
+        console.warn('[ParakeetAutoDownload] Preload failed (will lazy-load on first use):', msg);
+        setIsPreloading(false);
+        // No marcamos isModelLoaded=true — el primer uso lo cargará lazy (con delay).
+      });
+      unlisteners.push(unPreFail);
     };
 
     setup();
@@ -145,5 +182,12 @@ export function useParakeetAutoDownload(): ParakeetAutoDownloadState {
     checkAndDownload();
   }, [isAuthenticated, maityUser, checkAndDownload]);
 
-  return { isModelReady, isDownloading, downloadProgress, error };
+  return {
+    isModelReady,
+    isDownloading,
+    downloadProgress,
+    isModelLoaded,
+    isPreloading,
+    error,
+  };
 }

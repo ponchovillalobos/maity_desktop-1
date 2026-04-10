@@ -75,10 +75,7 @@ impl RecordingLogRepository {
     }
 
     /// Mark logs as synced to cloud
-    pub async fn mark_as_synced(
-        pool: &SqlitePool,
-        ids: &[i64],
-    ) -> Result<u64, SqlxError> {
+    pub async fn mark_as_synced(pool: &SqlitePool, ids: &[i64]) -> Result<u64, SqlxError> {
         if ids.is_empty() {
             return Ok(0);
         }
@@ -100,9 +97,7 @@ impl RecordingLogRepository {
     }
 
     /// Export recent logs as JSON string (for ZIP export)
-    pub async fn export_all_logs_json(
-        pool: &SqlitePool,
-    ) -> Result<String, SqlxError> {
+    pub async fn export_all_logs_json(pool: &SqlitePool) -> Result<String, SqlxError> {
         let logs = Self::get_recent_logs(pool, 500).await?;
         serde_json::to_string_pretty(&logs).map_err(|e| {
             error!("Failed to serialize recording logs: {}", e);
@@ -111,10 +106,7 @@ impl RecordingLogRepository {
     }
 
     /// Delete recording logs associated with a meeting (for cascade delete)
-    pub async fn delete_by_meeting(
-        pool: &SqlitePool,
-        meeting_id: &str,
-    ) -> Result<u64, SqlxError> {
+    pub async fn delete_by_meeting(pool: &SqlitePool, meeting_id: &str) -> Result<u64, SqlxError> {
         let result = sqlx::query("DELETE FROM recording_logs WHERE meeting_id = ?")
             .bind(meeting_id)
             .execute(pool)
