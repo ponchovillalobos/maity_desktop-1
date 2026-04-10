@@ -39,7 +39,7 @@ async def process_transcript_background(process_id: str, transcript: TranscriptR
                 provider_names = {"claude": "Anthropic", "groq": "Groq", "openai": "OpenAI"}
                 raise ValueError(f"{provider_names.get(transcript.model, transcript.model)} API key not configured. Please set your API key in the model settings.")
 
-        _, all_json_data = await processor.process_transcript(
+        _, all_json_data, chunk_errors = await processor.process_transcript(
             text=transcript.text,
             model=transcript.model,
             model_name=transcript.model_name,
@@ -100,8 +100,19 @@ async def process_transcript_background(process_id: str, transcript: TranscriptR
             await processor.db.update_meeting_name(transcript.meeting_id, final_summary["MeetingName"])
 
         if all_json_data:
-            await processor.db.update_process(process_id, status="completed", result=json.dumps(final_summary))
-            logger.info(f"Background processing completed for process_id: {process_id}")
+            # LLM-002: surface partial failures so the client can warn the user
+            if chunk_errors:
+                failed_summary = ", ".join(f"chunk {e['chunk']}: {e['error'][:80]}" for e in chunk_errors)
+                await processor.db.update_process(
+                    process_id,
+                    status="completed_partial",
+                    result=json.dumps(final_summary),
+                    error=f"Partial summary — {len(chunk_errors)} chunk(s) failed: {failed_summary}",
+                )
+                logger.warning(f"Background processing completed with partial failures for {process_id}: {failed_summary}")
+            else:
+                await processor.db.update_process(process_id, status="completed", result=json.dumps(final_summary))
+                logger.info(f"Background processing completed for process_id: {process_id}")
         else:
             error_msg = "Summary generation failed: No chunks were processed successfully. Check logs for specific errors."
             await processor.db.update_process(process_id, status="failed", error=error_msg)

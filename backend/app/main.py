@@ -118,7 +118,7 @@ class SummaryProcessor:
                 f"Processing transcript of length {len(request.text)} with "
                 f"chunk_size={request.chunk_size}, overlap={request.overlap}"
             )
-            num_chunks, all_json_data = await self.transcript_processor.process_transcript(
+            num_chunks, all_json_data, chunk_errors = await self.transcript_processor.process_transcript(
                 text=request.text,
                 model=request.model,
                 model_name=request.model_name,
@@ -126,8 +126,10 @@ class SummaryProcessor:
                 overlap=request.overlap,
                 custom_prompt=request.custom_prompt,
             )
+            if chunk_errors:
+                logger.warning(f"LLM-002: transcript processed with {len(chunk_errors)} partial failures")
             logger.info(f"Successfully processed transcript into {num_chunks} chunks")
-            return num_chunks, all_json_data
+            return num_chunks, all_json_data, chunk_errors
         except Exception as e:
             logger.error(f"Error processing transcript: {str(e)}", exc_info=True)
             raise

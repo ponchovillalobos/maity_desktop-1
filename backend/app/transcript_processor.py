@@ -173,7 +173,7 @@ class TranscriptProcessor:
                 f"If you need a new model, update MODEL_WHITELIST."
             )
 
-    async def process_transcript(self, text: str, model: str, model_name: str, chunk_size: int = 5000, overlap: int = 1000, custom_prompt: str = "") -> Tuple[int, List[str]]:
+    async def process_transcript(self, text: str, model: str, model_name: str, chunk_size: int = 5000, overlap: int = 1000, custom_prompt: str = "") -> Tuple[int, List[str], List[dict]]:
         """
         Process transcript text into chunks and generate structured summaries for each chunk using an AI model.
 
@@ -189,6 +189,8 @@ class TranscriptProcessor:
             A tuple containing:
             - The number of chunks processed.
             - A list of JSON strings, where each string is the summary of a chunk.
+            - LLM-002: A list of dicts describing chunk errors (empty if all succeeded).
+              Each dict: {"chunk": int, "error": str}
         """
 
         logger.info(f"Processing transcript (length {len(text)}) with model provider={model}, model_name={model_name}, chunk_size={chunk_size}, overlap={overlap}")
@@ -199,6 +201,7 @@ class TranscriptProcessor:
         logger.info(f"LLM-001: estimated_input_tokens={estimated_tokens} (cap={self.LLM_MAX_INPUT_TOKENS})")
 
         all_json_data = []
+        chunk_errors: List[dict] = []  # LLM-002: track per-chunk failures
         agent = None # Define agent variable
         llm = None # Define llm variable
 
@@ -301,10 +304,18 @@ class TranscriptProcessor:
                     logger.info(f"Successfully generated summary for chunk {i+1}.")
 
                 except Exception as chunk_error:
-                    logger.error(f"Error processing chunk {i+1}: {chunk_error}", exc_info=True)
+                    err_msg = str(chunk_error)
+                    logger.error(f"Error processing chunk {i+1}: {err_msg}", exc_info=True)
+                    # LLM-002: registrar el fallo para surfacear al cliente
+                    chunk_errors.append({"chunk": i + 1, "error": err_msg})
 
+            if chunk_errors:
+                logger.warning(
+                    f"LLM-002: {len(chunk_errors)}/{num_chunks} chunks failed — "
+                    f"summary is PARTIAL. Failed: {[e['chunk'] for e in chunk_errors]}"
+                )
             logger.info(f"Finished processing all {num_chunks} chunks.")
-            return num_chunks, all_json_data
+            return num_chunks, all_json_data, chunk_errors
 
         except Exception as e:
             logger.error(f"Error during transcript processing: {str(e)}", exc_info=True)
