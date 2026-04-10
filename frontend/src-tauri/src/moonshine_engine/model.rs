@@ -45,11 +45,13 @@ pub struct SimpleTokenizer {
 impl SimpleTokenizer {
     /// Load tokenizer from HuggingFace tokenizer.json format
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, MoonshineError> {
-        let content = fs::read_to_string(path.as_ref())
-            .map_err(|e| MoonshineError::Tokenizer(format!("Failed to read tokenizer file: {}", e)))?;
+        let content = fs::read_to_string(path.as_ref()).map_err(|e| {
+            MoonshineError::Tokenizer(format!("Failed to read tokenizer file: {}", e))
+        })?;
 
-        let json: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| MoonshineError::JsonParse(format!("Failed to parse tokenizer JSON: {}", e)))?;
+        let json: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+            MoonshineError::JsonParse(format!("Failed to parse tokenizer JSON: {}", e))
+        })?;
 
         let mut id_to_token = HashMap::new();
         let mut token_to_id = HashMap::new();
@@ -76,7 +78,7 @@ impl SimpleTokenizer {
                 for token_obj in tokens_array {
                     if let (Some(id), Some(content)) = (
                         token_obj.get("id").and_then(|v| v.as_u64()),
-                        token_obj.get("content").and_then(|v| v.as_str())
+                        token_obj.get("content").and_then(|v| v.as_str()),
                     ) {
                         let id = id as u32;
                         id_to_token.insert(id, content.to_string());
@@ -88,11 +90,14 @@ impl SimpleTokenizer {
 
         if id_to_token.is_empty() {
             return Err(MoonshineError::Tokenizer(
-                "No vocabulary found in tokenizer.json".to_string()
+                "No vocabulary found in tokenizer.json".to_string(),
             ));
         }
 
-        log::info!("Loaded Moonshine tokenizer with {} tokens", id_to_token.len());
+        log::info!(
+            "Loaded Moonshine tokenizer with {} tokens",
+            id_to_token.len()
+        );
 
         Ok(Self {
             id_to_token,
@@ -101,7 +106,11 @@ impl SimpleTokenizer {
     }
 
     /// Decode token IDs to text
-    pub fn decode(&self, token_ids: &[u32], skip_special_tokens: bool) -> Result<String, MoonshineError> {
+    pub fn decode(
+        &self,
+        token_ids: &[u32],
+        skip_special_tokens: bool,
+    ) -> Result<String, MoonshineError> {
         let mut result = String::new();
 
         for &id in token_ids {
@@ -109,17 +118,24 @@ impl SimpleTokenizer {
                 // Skip special tokens if requested
                 if skip_special_tokens {
                     // Common special tokens to skip
-                    if token == "<s>" || token == "</s>" || token == "<pad>" ||
-                       token == "<unk>" || token == "[CLS]" || token == "[SEP]" ||
-                       token == "[PAD]" || token == "[UNK]" || token == "<|endoftext|>" {
+                    if token == "<s>"
+                        || token == "</s>"
+                        || token == "<pad>"
+                        || token == "<unk>"
+                        || token == "[CLS]"
+                        || token == "[SEP]"
+                        || token == "[PAD]"
+                        || token == "[UNK]"
+                        || token == "<|endoftext|>"
+                    {
                         continue;
                     }
                 }
 
                 // Handle byte-level BPE tokens (like "Ġ" for space)
                 let decoded_token = token
-                    .replace("Ġ", " ")  // GPT-style space marker
-                    .replace("▁", " ")  // SentencePiece space marker
+                    .replace("Ġ", " ") // GPT-style space marker
+                    .replace("▁", " ") // SentencePiece space marker
                     .replace("Ċ", "\n"); // GPT-style newline marker
 
                 result.push_str(&decoded_token);
@@ -243,23 +259,17 @@ impl MoonshineModel {
 
         log::info!(
             "Moonshine '{}' loaded: inputs={:?}, outputs={:?}",
-            model_filename, input_names, output_names
+            model_filename,
+            input_names,
+            output_names
         );
 
         for input in &session.inputs {
-            log::info!(
-                "  Input '{}': type={:?}",
-                input.name,
-                input.input_type
-            );
+            log::info!("  Input '{}': type={:?}", input.name, input.input_type);
         }
 
         for output in &session.outputs {
-            log::info!(
-                "  Output '{}': type={:?}",
-                output.name,
-                output.output_type
-            );
+            log::info!("  Output '{}': type={:?}", output.name, output.output_type);
         }
 
         // Validate expected inputs based on model type
@@ -272,7 +282,8 @@ impl MoonshineModel {
             } else {
                 log::info!(
                     "✅ Encoder model has {} input(s): {:?} (using positional input)",
-                    input_names.len(), input_names
+                    input_names.len(),
+                    input_names
                 );
             }
         } else if model_name == "decoder_model" {
@@ -327,7 +338,10 @@ impl MoonshineModel {
         // Log audio statistics for debugging
         let (min_val, max_val, mean_val) = if !audio_samples.is_empty() {
             let min = audio_samples.iter().cloned().fold(f32::INFINITY, f32::min);
-            let max = audio_samples.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let max = audio_samples
+                .iter()
+                .cloned()
+                .fold(f32::NEG_INFINITY, f32::max);
             let sum: f32 = audio_samples.iter().sum();
             let mean = sum / audio_samples.len() as f32;
             (min, max, mean)
@@ -336,24 +350,29 @@ impl MoonshineModel {
         };
         log::debug!(
             "Audio stats: min={:.4}, max={:.4}, mean={:.6}, shape=[{}, {}]",
-            min_val, max_val, mean_val, batch_size, seq_len
+            min_val,
+            max_val,
+            mean_val,
+            batch_size,
+            seq_len
         );
 
         // Log the encoder input name for debugging (different Moonshine exports use different names)
         if let Some(input_info) = self.encoder.inputs.first() {
-            log::debug!("Encoder input name: '{}', using positional input", input_info.name);
+            log::debug!(
+                "Encoder input name: '{}', using positional input",
+                input_info.name
+            );
         }
 
         // Create input array
-        let audio_array = Array2::from_shape_vec((batch_size, seq_len), audio_samples.to_vec())?
-            .into_dyn();
+        let audio_array =
+            Array2::from_shape_vec((batch_size, seq_len), audio_samples.to_vec())?.into_dyn();
 
         // Use positional input (first input) instead of named input to support
         // different Moonshine model exports that may use different input names
         // (e.g., "args_0", "audio", "input", etc.)
-        let inputs = inputs![
-            TensorRef::from_array_view(audio_array.view())?,
-        ];
+        let inputs = inputs![TensorRef::from_array_view(audio_array.view())?,];
 
         let outputs = self.encoder.run(inputs).map_err(|e| {
             log::error!(
@@ -372,7 +391,9 @@ impl MoonshineModel {
             Self::extract_to_aligned_array(v)?
         } else {
             // Fallback to first output
-            let first_output = outputs.values().next()
+            let first_output = outputs
+                .values()
+                .next()
                 .ok_or_else(|| MoonshineError::OutputNotFound("hidden_states".to_string()))?;
             Self::extract_to_aligned_array(&first_output)?
         };
@@ -415,8 +436,7 @@ impl MoonshineModel {
             } else {
                 // Subsequent steps: use decoder_with_past (decoder_with_past_model.onnx)
                 let input_ids_data = vec![*tokens.last().unwrap()];
-                let input_ids =
-                    Array2::from_shape_vec((batch_size, 1), input_ids_data)?.into_dyn();
+                let input_ids = Array2::from_shape_vec((batch_size, 1), input_ids_data)?.into_dyn();
 
                 let cache = past_key_values.as_ref().ok_or_else(|| {
                     MoonshineError::InputNotFound("past_key_values not available".to_string())

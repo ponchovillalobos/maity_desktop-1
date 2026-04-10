@@ -8,9 +8,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 // Compile regex once and reuse (significant performance improvement for repeated calls)
-static THINKING_TAG_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?s)<think(?:ing)?>.*?</think(?:ing)?>").unwrap()
-});
+static THINKING_TAG_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)<think(?:ing)?>.*?</think(?:ing)?>").unwrap());
 
 /// Rough token count estimation using character count
 pub fn rough_token_count(s: &str) -> usize {
@@ -218,7 +217,11 @@ pub async fn generate_meeting_summary(
             // Check for cancellation before processing each chunk
             if let Some(token) = cancellation_token {
                 if token.is_cancelled() {
-                    info!("Summary generation cancelled during chunk {}/{}", i + 1, num_chunks);
+                    info!(
+                        "Summary generation cancelled during chunk {}/{}",
+                        i + 1,
+                        num_chunks
+                    );
                     return Err("Summary generation was cancelled".to_string());
                 }
             }
@@ -302,7 +305,10 @@ pub async fn generate_meeting_summary(
         };
     }
 
-    info!("Generating final markdown report with template: {}", template_id);
+    info!(
+        "Generating final markdown report with template: {}",
+        template_id
+    );
 
     // Load the template using the provided template_id
     let template = templates::get_template(template_id)
@@ -343,7 +349,8 @@ pub async fn generate_meeting_summary(
     );
 
     if !custom_prompt.is_empty() {
-        final_user_prompt.push_str("\n\nContexto proporcionado por el usuario:\n\n<user_context>\n");
+        final_user_prompt
+            .push_str("\n\nContexto proporcionado por el usuario:\n\n<user_context>\n");
         final_user_prompt.push_str(custom_prompt);
         final_user_prompt.push_str("\n</user_context>");
     }

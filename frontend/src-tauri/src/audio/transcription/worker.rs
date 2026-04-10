@@ -5,8 +5,8 @@
 
 use super::engine::TranscriptionEngine;
 use super::provider::{TranscriptionError, TranscriptionProvider};
-use crate::audio::AudioChunk;
 use crate::audio::recording_state::DeviceType;
+use crate::audio::AudioChunk;
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -37,7 +37,10 @@ pub fn request_cancellation() {
 /// Reset the speech detected flag for a new recording session
 pub fn reset_speech_detected_flag() {
     SPEECH_DETECTED_EMITTED.store(false, Ordering::SeqCst);
-    info!("🔍 SPEECH_DETECTED_EMITTED reset to: {}", SPEECH_DETECTED_EMITTED.load(Ordering::SeqCst));
+    info!(
+        "🔍 SPEECH_DETECTED_EMITTED reset to: {}",
+        SPEECH_DETECTED_EMITTED.load(Ordering::SeqCst)
+    );
 }
 
 /// Reset session-scoped counters for a new recording session
@@ -45,7 +48,9 @@ pub fn reset_session_counters() {
     SEQUENCE_COUNTER.store(0, Ordering::SeqCst);
     CANCEL_PENDING.store(false, Ordering::SeqCst);
     reset_speech_detected_flag();
-    info!("Session counters reset: SEQUENCE_COUNTER=0, SPEECH_DETECTED=false, CANCEL_PENDING=false");
+    info!(
+        "Session counters reset: SEQUENCE_COUNTER=0, SPEECH_DETECTED=false, CANCEL_PENDING=false"
+    );
 }
 
 /// Accumulates small VAD segments into larger chunks before sending to transcription engine.
@@ -149,7 +154,7 @@ pub struct TranscriptUpdate {
     // NEW: Recording-relative timestamps for playback sync
     pub audio_start_time: f64, // Seconds from recording start (e.g., 125.3)
     pub audio_end_time: f64,   // Seconds from recording start (e.g., 128.6)
-    pub duration: f64,          // Segment duration in seconds (e.g., 3.3)
+    pub duration: f64,         // Segment duration in seconds (e.g., 3.3)
     // NEW: Source type for speaker identification (user=mic, interlocutor=system)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_type: Option<String>,
@@ -171,13 +176,20 @@ pub fn start_transcription_task<R: Runtime>(
 
         // Initialize transcription engine (Whisper or Parakeet based on config)
         println!("🚀 [WORKER] Inicializando transcription engine...");
-        let transcription_engine = match super::engine::get_or_init_transcription_engine(&app).await {
+        let transcription_engine = match super::engine::get_or_init_transcription_engine(&app).await
+        {
             Ok(engine) => {
-                println!("✅ [WORKER] Transcription engine inicializado: {}", engine.provider_name());
+                println!(
+                    "✅ [WORKER] Transcription engine inicializado: {}",
+                    engine.provider_name()
+                );
                 engine
             }
             Err(e) => {
-                println!("❌ [WORKER] Error inicializando transcription engine: {}", e);
+                println!(
+                    "❌ [WORKER] Error inicializando transcription engine: {}",
+                    e
+                );
                 error!("Failed to initialize transcription engine: {}", e);
                 let _ = app.emit("transcription-error", serde_json::json!({
                     "error": e,
@@ -203,7 +215,11 @@ pub fn start_transcription_task<R: Runtime>(
         let chunks_dropped = Arc::new(AtomicU64::new(0)); // FIX: Track dropped chunks for debugging
         let input_finished = Arc::new(AtomicBool::new(false));
 
-        info!("📊 Starting {} transcription worker{} (serial mode for ordered emission)", NUM_WORKERS, if NUM_WORKERS == 1 { "" } else { "s" });
+        info!(
+            "📊 Starting {} transcription worker{} (serial mode for ordered emission)",
+            NUM_WORKERS,
+            if NUM_WORKERS == 1 { "" } else { "s" }
+        );
 
         // Check if this is a streaming provider (Deepgram persistent WS)
         let is_streaming = transcription_engine.is_streaming_provider();
@@ -218,7 +234,10 @@ pub fn start_transcription_task<R: Runtime>(
                 TranscriptionEngine::Whisper(e) => TranscriptionEngine::Whisper(e.clone()),
                 TranscriptionEngine::Parakeet(e) => TranscriptionEngine::Parakeet(e.clone()),
                 TranscriptionEngine::Moonshine(e) => TranscriptionEngine::Moonshine(e.clone()),
-                TranscriptionEngine::Deepgram { mic, sys } => TranscriptionEngine::Deepgram { mic: mic.clone(), sys: sys.clone() },
+                TranscriptionEngine::Deepgram { mic, sys } => TranscriptionEngine::Deepgram {
+                    mic: mic.clone(),
+                    sys: sys.clone(),
+                },
                 TranscriptionEngine::Provider(p) => TranscriptionEngine::Provider(p.clone()),
             };
             let app_clone = app.clone();
@@ -246,7 +265,10 @@ pub fn start_transcription_task<R: Runtime>(
                         worker_id, engine_name, current_model
                     );
                 } else {
-                    warn!("⚠️ Worker {} pre-validation: {} model not loaded - chunks may be skipped", worker_id, engine_name);
+                    warn!(
+                        "⚠️ Worker {} pre-validation: {} model not loaded - chunks may be skipped",
+                        worker_id, engine_name
+                    );
                 }
 
                 loop {
@@ -262,7 +284,10 @@ pub fn start_transcription_task<R: Runtime>(
                         if cancelled_count > 0 {
                             chunks_dropped_clone.fetch_add(cancelled_count, Ordering::SeqCst);
                             chunks_completed_clone.fetch_add(cancelled_count, Ordering::SeqCst);
-                            warn!("Worker {}: cancelled {} pending chunks", worker_id, cancelled_count);
+                            warn!(
+                                "Worker {}: cancelled {} pending chunks",
+                                worker_id, cancelled_count
+                            );
                         }
                         info!("Worker {} stopping due to cancellation", worker_id);
                         break;
@@ -302,8 +327,12 @@ pub fn start_transcription_task<R: Runtime>(
                             // Capture device_type before chunk is moved (for speaker identification and routing)
                             let chunk_device_type = chunk.device_type.clone();
                             let chunk_source_type = match chunk_device_type {
-                                crate::audio::recording_state::DeviceType::Microphone => Some("user".to_string()),
-                                crate::audio::recording_state::DeviceType::System => Some("interlocutor".to_string()),
+                                crate::audio::recording_state::DeviceType::Microphone => {
+                                    Some("user".to_string())
+                                }
+                                crate::audio::recording_state::DeviceType::System => {
+                                    Some("interlocutor".to_string())
+                                }
                                 crate::audio::recording_state::DeviceType::Mixed => None, // Mixed audio should not be transcribed
                             };
 
@@ -319,9 +348,11 @@ pub fn start_transcription_task<R: Runtime>(
                                 Ok((transcript, confidence_opt, is_partial)) => {
                                     // Provider-aware confidence threshold
                                     let confidence_threshold = match &engine_clone {
-                                        TranscriptionEngine::Whisper(_) | TranscriptionEngine::Provider(_) => 0.3,
+                                        TranscriptionEngine::Whisper(_)
+                                        | TranscriptionEngine::Provider(_) => 0.3,
                                         TranscriptionEngine::Deepgram { .. } => 0.3,
-                                        TranscriptionEngine::Parakeet(_) | TranscriptionEngine::Moonshine(_) => 0.0, // Parakeet/Moonshine have no confidence, accept all
+                                        TranscriptionEngine::Parakeet(_)
+                                        | TranscriptionEngine::Moonshine(_) => 0.0, // Parakeet/Moonshine have no confidence, accept all
                                     };
 
                                     let confidence_str = match confidence_opt {
@@ -333,7 +364,8 @@ pub fn start_transcription_task<R: Runtime>(
                                           worker_id, transcript, confidence_str, is_partial, confidence_threshold);
 
                                     // Check confidence threshold (or accept if no confidence provided)
-                                    let meets_threshold = confidence_opt.map_or(true, |c| c >= confidence_threshold);
+                                    let meets_threshold =
+                                        confidence_opt.map_or(true, |c| c >= confidence_threshold);
 
                                     if !transcript.trim().is_empty() && meets_threshold {
                                         // PERFORMANCE: Only log transcription results, not every processing step
@@ -342,7 +374,8 @@ pub fn start_transcription_task<R: Runtime>(
 
                                         // Emit speech-detected event for frontend UX (only on first detection per session)
                                         // This is lightweight and provides better user feedback
-                                        let current_flag = SPEECH_DETECTED_EMITTED.load(Ordering::SeqCst);
+                                        let current_flag =
+                                            SPEECH_DETECTED_EMITTED.load(Ordering::SeqCst);
                                         info!("🔍 Checking speech-detected flag: current={}, will_emit={}", current_flag, !current_flag);
 
                                         if !current_flag {
@@ -358,7 +391,8 @@ pub fn start_transcription_task<R: Runtime>(
                                         }
 
                                         // Generate sequence ID and calculate timestamps FIRST
-                                        let sequence_id = SEQUENCE_COUNTER.fetch_add(1, Ordering::SeqCst);
+                                        let sequence_id =
+                                            SEQUENCE_COUNTER.fetch_add(1, Ordering::SeqCst);
                                         let audio_start_time = chunk_timestamp; // Already in seconds from recording start
                                         let audio_end_time = chunk_timestamp + chunk_duration;
 
@@ -421,13 +455,20 @@ pub fn start_transcription_task<R: Runtime>(
                                             continue;
                                         }
                                         TranscriptionError::ModelNotLoaded => {
-                                            warn!("Worker {}: Model unloaded during transcription", worker_id);
+                                            warn!(
+                                                "Worker {}: Model unloaded during transcription",
+                                                worker_id
+                                            );
                                             chunks_completed_clone.fetch_add(1, Ordering::SeqCst);
                                             continue;
                                         }
                                         _ => {
-                                            warn!("Worker {}: Transcription failed: {}", worker_id, e);
-                                            let _ = app_clone.emit("transcription-warning", e.to_string());
+                                            warn!(
+                                                "Worker {}: Transcription failed: {}",
+                                                worker_id, e
+                                            );
+                                            let _ = app_clone
+                                                .emit("transcription-warning", e.to_string());
                                         }
                                     }
                                 }
@@ -504,16 +545,17 @@ pub fn start_transcription_task<R: Runtime>(
         let chunks_dropped_dispatcher = chunks_dropped.clone();
 
         // Separate accumulators per device type (mic and system audio transcribe independently)
-        // Adaptive parameters based on hardware tier
+        // QW-4 (audit 2026-04-08): antes los tiers altos esperaban MÁS (1500ms flush
+        // en Ultra) que los bajos — exactamente lo contrario de la intuición esperada.
+        // El usuario con hardware potente se sentía MÁS laggy que el que tiene una laptop
+        // débil. Ahora todos los tiers usan (0.3s, 4.0s, 400ms): emit-sooner, techo
+        // razonable, flush rápido. Reduces latencia percibida ~700-1100ms.
         let hw_profile = crate::audio::HardwareProfile::detect();
-        let (min_dur, max_dur, flush_timeout) = match hw_profile.performance_tier {
-            crate::audio::PerformanceTier::Ultra  => (1.0, 8.0, 1500),
-            crate::audio::PerformanceTier::High   => (0.8, 6.0, 1200),
-            crate::audio::PerformanceTier::Medium => (0.8, 4.0, 1000),
-            crate::audio::PerformanceTier::Low    => (0.5, 3.0, 800),
-        };
-        info!("[WORKER] Adaptive ChunkAccumulator: min={:.1}s, max={:.1}s, flush={}ms (tier: {:?})",
-                 min_dur, max_dur, flush_timeout, hw_profile.performance_tier);
+        let (min_dur, max_dur, flush_timeout) = (0.3_f64, 4.0_f64, 400_u64);
+        info!(
+            "[WORKER] Adaptive ChunkAccumulator: min={:.1}s, max={:.1}s, flush={}ms (tier: {:?})",
+            min_dur, max_dur, flush_timeout, hw_profile.performance_tier
+        );
         let mut mic_accumulator = ChunkAccumulator::new(min_dur, max_dur, flush_timeout);
         let mut sys_accumulator = ChunkAccumulator::new(min_dur, max_dur, flush_timeout);
 
@@ -587,10 +629,9 @@ pub fn start_transcription_task<R: Runtime>(
         loop {
             // Use a short timeout to periodically check for flush timeouts
             // (200ms for responsive silence detection in accumulators)
-            match tokio::time::timeout(
-                tokio::time::Duration::from_millis(200),
-                receiver.recv()
-            ).await {
+            match tokio::time::timeout(tokio::time::Duration::from_millis(200), receiver.recv())
+                .await
+            {
                 Ok(Some(chunk)) => {
                     if use_accumulator {
                         // Route chunk to appropriate accumulator based on device type
@@ -601,14 +642,25 @@ pub fn start_transcription_task<R: Runtime>(
                         };
 
                         if let Some(acc_chunk) = accumulated {
-                            if !dispatch_accumulated(acc_chunk, &work_sender, &work_receiver, &chunks_queued, &chunks_dropped_dispatcher).await {
+                            if !dispatch_accumulated(
+                                acc_chunk,
+                                &work_sender,
+                                &work_receiver,
+                                &chunks_queued,
+                                &chunks_dropped_dispatcher,
+                            )
+                            .await
+                            {
                                 break;
                             }
                         }
                     } else {
                         // Streaming provider: dispatch directly without accumulation
                         let queued = chunks_queued.fetch_add(1, Ordering::SeqCst) + 1;
-                        info!("📥 Dispatching chunk {} to streaming worker (total queued: {})", chunk.chunk_id, queued);
+                        info!(
+                            "📥 Dispatching chunk {} to streaming worker (total queued: {})",
+                            chunk.chunk_id, queued
+                        );
                         match work_sender.try_send(chunk) {
                             Ok(()) => {}
                             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
@@ -626,10 +678,24 @@ pub fn start_transcription_task<R: Runtime>(
                     // Channel closed - flush remaining accumulator buffers and exit
                     info!("📭 Input channel closed, flushing accumulators...");
                     if let Some(remaining) = mic_accumulator.flush() {
-                        dispatch_accumulated(remaining, &work_sender, &work_receiver, &chunks_queued, &chunks_dropped_dispatcher).await;
+                        dispatch_accumulated(
+                            remaining,
+                            &work_sender,
+                            &work_receiver,
+                            &chunks_queued,
+                            &chunks_dropped_dispatcher,
+                        )
+                        .await;
                     }
                     if let Some(remaining) = sys_accumulator.flush() {
-                        dispatch_accumulated(remaining, &work_sender, &work_receiver, &chunks_queued, &chunks_dropped_dispatcher).await;
+                        dispatch_accumulated(
+                            remaining,
+                            &work_sender,
+                            &work_receiver,
+                            &chunks_queued,
+                            &chunks_dropped_dispatcher,
+                        )
+                        .await;
                     }
                     break;
                 }
@@ -637,10 +703,24 @@ pub fn start_transcription_task<R: Runtime>(
                     // Timeout — check if accumulators need flushing due to silence
                     if use_accumulator {
                         if let Some(timeout_chunk) = mic_accumulator.check_timeout() {
-                            dispatch_accumulated(timeout_chunk, &work_sender, &work_receiver, &chunks_queued, &chunks_dropped_dispatcher).await;
+                            dispatch_accumulated(
+                                timeout_chunk,
+                                &work_sender,
+                                &work_receiver,
+                                &chunks_queued,
+                                &chunks_dropped_dispatcher,
+                            )
+                            .await;
                         }
                         if let Some(timeout_chunk) = sys_accumulator.check_timeout() {
-                            dispatch_accumulated(timeout_chunk, &work_sender, &work_receiver, &chunks_queued, &chunks_dropped_dispatcher).await;
+                            dispatch_accumulated(
+                                timeout_chunk,
+                                &work_sender,
+                                &work_receiver,
+                                &chunks_queued,
+                                &chunks_dropped_dispatcher,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -653,10 +733,7 @@ pub fn start_transcription_task<R: Runtime>(
             let pending = current_queued.saturating_sub(current_completed);
 
             if pending > backpressure_threshold && pending % 100 == 0 {
-                warn!(
-                    "Transcription queue depth high: {} pending chunks",
-                    pending
-                );
+                warn!("Transcription queue depth high: {} pending chunks", pending);
             }
 
             if last_lag_emit.elapsed() >= lag_emit_interval {
@@ -667,14 +744,17 @@ pub fn start_transcription_task<R: Runtime>(
                 } else {
                     0.0
                 };
-                let _ = app.emit("transcription-lag-update", serde_json::json!({
-                    "queue_depth": pending,
-                    "lag_seconds": lag_seconds,
-                    "chunks_per_second": chunks_per_second,
-                    "chunks_received": current_queued,
-                    "chunks_processed": current_completed,
-                    "chunks_dropped": current_dropped
-                }));
+                let _ = app.emit(
+                    "transcription-lag-update",
+                    serde_json::json!({
+                        "queue_depth": pending,
+                        "lag_seconds": lag_seconds,
+                        "chunks_per_second": chunks_per_second,
+                        "chunks_received": current_queued,
+                        "chunks_processed": current_completed,
+                        "chunks_dropped": current_dropped
+                    }),
+                );
                 last_lag_emit = std::time::Instant::now();
             }
         }
@@ -691,13 +771,16 @@ pub fn start_transcription_task<R: Runtime>(
         let completed_now = chunks_completed.load(Ordering::SeqCst);
         let remaining = total_chunks_queued.saturating_sub(completed_now);
         let estimated_seconds = remaining as f64 * 0.5; // ~500ms per accumulated chunk
-        let _ = app.emit("transcription-finishing", serde_json::json!({
-            "total_remaining": remaining,
-            "processed": 0,
-            "estimated_seconds": estimated_seconds,
-            "total_chunks": total_chunks_queued,
-            "chunks_completed": completed_now
-        }));
+        let _ = app.emit(
+            "transcription-finishing",
+            serde_json::json!({
+                "total_remaining": remaining,
+                "processed": 0,
+                "estimated_seconds": estimated_seconds,
+                "total_chunks": total_chunks_queued,
+                "chunks_completed": completed_now
+            }),
+        );
 
         // Emit final chunk count to frontend
         let _ = app.emit("transcription-queue-complete", serde_json::json!({
@@ -750,13 +833,16 @@ pub fn start_transcription_task<R: Runtime>(
                     0.0
                 };
 
-                let _ = app.emit("transcription-summary", serde_json::json!({
-                    "chunks_queued": final_queued,
-                    "chunks_completed": final_completed,
-                    "chunks_dropped": final_dropped,
-                    "loss_percentage": loss_percentage,
-                    "status": if final_dropped == 0 { "success" } else { "partial_loss" }
-                }));
+                let _ = app.emit(
+                    "transcription-summary",
+                    serde_json::json!({
+                        "chunks_queued": final_queued,
+                        "chunks_completed": final_completed,
+                        "chunks_dropped": final_dropped,
+                        "loss_percentage": loss_percentage,
+                        "status": if final_dropped == 0 { "success" } else { "partial_loss" }
+                    }),
+                );
 
                 break;
             } else if verification_attempts < MAX_VERIFICATION_ATTEMPTS {
@@ -793,14 +879,19 @@ pub fn start_transcription_task<R: Runtime>(
         let final_completed = chunks_completed.load(Ordering::SeqCst);
         let final_dropped = chunks_dropped.load(Ordering::SeqCst);
         let was_cancelled = CANCEL_PENDING.load(Ordering::SeqCst);
-        let _ = app.emit("transcription-complete", serde_json::json!({
-            "chunks_completed": final_completed,
-            "chunks_dropped": final_dropped,
-            "total_chunks": total_chunks_queued,
-            "was_cancelled": was_cancelled
-        }));
+        let _ = app.emit(
+            "transcription-complete",
+            serde_json::json!({
+                "chunks_completed": final_completed,
+                "chunks_dropped": final_dropped,
+                "total_chunks": total_chunks_queued,
+                "was_cancelled": was_cancelled
+            }),
+        );
 
-        info!("Parallel transcription task completed - all workers finished, ready for model unload");
+        info!(
+            "Parallel transcription task completed - all workers finished, ready for model unload"
+        );
     })
 }
 
@@ -984,7 +1075,10 @@ async fn transcribe_chunk_with_provider<R: Runtime>(
                     // recoverable (reconnection in transcribe()). Emitting transcription-error
                     // would cause RecordingControls to call onRecordingStop(false) and kill the
                     // entire recording session, which is too aggressive for a single chunk fail.
-                    warn!("Deepgram chunk {} send failed ({:?}): {}", chunk.chunk_id, device_type, err_msg);
+                    warn!(
+                        "Deepgram chunk {} send failed ({:?}): {}",
+                        chunk.chunk_id, device_type, err_msg
+                    );
                     let _ = app.emit("transcription-warning", &err_msg);
                     Err(e)
                 }
@@ -993,8 +1087,12 @@ async fn transcribe_chunk_with_provider<R: Runtime>(
         TranscriptionEngine::Provider(provider) => {
             // Trait-based provider (clean, unified interface)
             let language = crate::get_language_preference_internal();
-            println!("[WORKER] Using provider: {} (language: {:?}, {} samples)",
-                     provider.provider_name(), language, speech_samples.len());
+            println!(
+                "[WORKER] Using provider: {} (language: {:?}, {} samples)",
+                provider.provider_name(),
+                language,
+                speech_samples.len()
+            );
 
             match provider.transcribe(speech_samples, language).await {
                 Ok(result) => {

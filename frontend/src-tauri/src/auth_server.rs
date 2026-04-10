@@ -113,7 +113,10 @@ struct AuthServerStopped {
 #[tauri::command]
 pub async fn start_oauth_server<R: Runtime>(app: AppHandle<R>) -> Result<u16, String> {
     if SERVER_RUNNING.load(Ordering::SeqCst) {
-        log::info!("[AuthServer] Server already running on port {}", OAUTH_CALLBACK_PORT);
+        log::info!(
+            "[AuthServer] Server already running on port {}",
+            OAUTH_CALLBACK_PORT
+        );
         return Ok(OAUTH_CALLBACK_PORT);
     }
 
@@ -161,9 +164,12 @@ async fn run_server<R: Runtime>(listener: TcpListener, app: AppHandle<R>) {
         }
     };
 
-    if let Err(e) = app.emit("auth-server-stopped", AuthServerStopped {
-        reason: shutdown_reason.to_string(),
-    }) {
+    if let Err(e) = app.emit(
+        "auth-server-stopped",
+        AuthServerStopped {
+            reason: shutdown_reason.to_string(),
+        },
+    ) {
         log::error!("[AuthServer] Failed to emit auth-server-stopped: {}", e);
     }
 
@@ -277,7 +283,12 @@ async fn handle_connection<R: Runtime>(
                             *guard = Some(code_value.to_string());
                         }
 
-                        if let Err(e) = app.emit("auth-code-received", AuthCode { code: code_value.to_string() }) {
+                        if let Err(e) = app.emit(
+                            "auth-code-received",
+                            AuthCode {
+                                code: code_value.to_string(),
+                            },
+                        ) {
                             log::error!("[AuthServer] Failed to emit auth-code-received: {}", e);
                         }
 
@@ -308,10 +319,7 @@ async fn handle_connection<R: Runtime>(
             }
 
             // Implicit flow fallback: serve HTML that reads fragment tokens
-            let html = CALLBACK_HTML.replace(
-                "OAUTH_PORT",
-                &OAUTH_CALLBACK_PORT.to_string(),
-            );
+            let html = CALLBACK_HTML.replace("OAUTH_PORT", &OAUTH_CALLBACK_PORT.to_string());
             let response = format!(
                 "HTTP/1.1 200 OK\r\n\
                  Content-Type: text/html; charset=utf-8\r\n\

@@ -1,8 +1,7 @@
 use tauri::{
-    Emitter,
     menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Manager, Runtime,
+    AppHandle, Emitter, Manager, Runtime,
 };
 
 #[derive(Debug, Clone)]
@@ -92,7 +91,10 @@ fn toggle_recording_handler<R: Runtime>(app: &AppHandle<R>) {
                     // Trigger frontend post-processing via event (works from any page)
                     // (SQLite save, navigation, analytics)
                     if let Err(e) = app_clone.emit("recording-stop-complete", true) {
-                        log::error!("Tray toggle: Failed to emit recording-stop-complete event: {}", e);
+                        log::error!(
+                            "Tray toggle: Failed to emit recording-stop-complete event: {}",
+                            e
+                        );
                     }
                 }
                 Err(e) => {
@@ -102,13 +104,47 @@ fn toggle_recording_handler<R: Runtime>(app: &AppHandle<R>) {
                 }
             }
         } else {
-            // Immediately show starting state
+            // UX-MINIMIZED-BUTTON (2026-04-08):
+            // Antes: eval('autoStartRecording=true') + location.assign('/') — este flujo
+            // dependía del webview estar despierto (se rompía si la ventana estaba
+            // minimizada, porque Chromium suspende el JS de webviews fuera de pantalla).
+            // Ahora: llamamos directamente la función Rust del start, bypaseando por
+            // completo el frontend. El webview recibe el evento 'recording-started' y
+            // actualiza su estado cuando se restaura — pero la grabación YA está andando.
             set_tray_state(&app_clone, RecordingState::Starting);
+            log::info!("Tray toggle: Starting recording directly via native start_recording_with_meeting_name (no eval)");
 
-            log::info!("Emitting start recording event from tray");
-            if let Some(window) = app_clone.get_webview_window("main") {
-                let _ = window.eval("sessionStorage.setItem('autoStartRecording', 'true')"); // Set the flag to start recording automatically
-                let _ = window.eval("window.location.assign('/')");
+            match crate::audio::recording_commands::start_recording_with_meeting_name(
+                app_clone.clone(),
+                None, // meeting_name: usa default "Meeting DD/MM HH:MM"
+            )
+            .await
+            {
+                Ok(_) => {
+                    log::info!("Tray toggle: Recording started successfully (native path)");
+
+                    // Avisar al frontend para que actualice la UI cuando se restaure
+                    if let Err(e) = app_clone.emit("recording-start-complete", true) {
+                        log::warn!("Tray toggle: failed to emit recording-start-complete: {}", e);
+                    }
+
+                    // Mostrar notificación del sistema (best-effort, no-op si falla)
+                    let notif_state = app_clone.state::<crate::NotificationManagerState<R>>();
+                    if let Err(e) =
+                        crate::notifications::commands::show_recording_started_notification(
+                            &app_clone,
+                            &notif_state,
+                            None,
+                        )
+                        .await
+                    {
+                        log::warn!("Tray toggle: notification failed: {}", e);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Tray toggle: Failed to start recording (native): {}", e);
+                    update_tray_menu_async(&app_clone).await;
+                }
             }
         }
     });
@@ -203,9 +239,7 @@ fn stop_recording_handler<R: Runtime>(app: &AppHandle<R>) {
 fn check_updates_handler<R: Runtime>(app: &AppHandle<R>) {
     focus_main_window(app);
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.eval(
-            "window.dispatchEvent(new CustomEvent('check-updates-from-tray'))"
-        );
+        let _ = window.eval("window.dispatchEvent(new CustomEvent('check-updates-from-tray'))");
     }
 }
 
@@ -219,12 +253,33 @@ pub fn update_tray_menu<R: Runtime>(app: &AppHandle<R>) {
     });
 }
 
+/// UX-002: Build a tooltip string that reflects the current recording state.
+/// Visible when the user hovers the tray icon — gives clear feedback even when
+/// the main window is minimized/hidden, without needing dynamic icon swapping.
+fn tooltip_for_state(state: &RecordingState) -> &'static str {
+    match state {
+        RecordingState::Stopped => "Maity",
+        RecordingState::Starting => "Maity • 🔄 iniciando grabación...",
+        RecordingState::Recording => "Maity • 🔴 GRABANDO",
+        RecordingState::Pausing => "Maity • ⏸ pausando...",
+        RecordingState::Paused => "Maity • ⏸ PAUSADO",
+        RecordingState::Resuming => "Maity • ▶ reanudando...",
+        RecordingState::Stopping => "Maity • ⏹ deteniendo...",
+    }
+}
+
 pub fn set_tray_state<R: Runtime>(app: &AppHandle<R>, state: RecordingState) {
     log::info!("Tray: Setting intermediate state: {:?}", state);
+    // UX-002: update tooltip too so user gets immediate visual feedback
+    let tooltip = tooltip_for_state(&state);
     // During recording state transitions, we assume recording is allowed (we're already recording)
     if let Ok(menu) = build_menu(app, state, true) {
         if let Some(tray) = app.tray_by_id("main-tray") {
             let result = tray.set_menu(Some(menu));
+            // UX-002: set_tooltip is best-effort — log on failure but don't break
+            if let Err(e) = tray.set_tooltip(Some(tooltip)) {
+                log::warn!("Tray: failed to set tooltip: {}", e);
+            }
             log::info!("Tray: Intermediate state menu update result: {:?}", result);
         } else {
             log::warn!("Tray: Could not find tray with id 'main-tray'");
@@ -269,7 +324,10 @@ async fn check_can_record<R: Runtime>(app: &AppHandle<R>) -> bool {
     let onboarding_complete = match crate::onboarding::load_onboarding_status(app).await {
         Ok(status) => status.completed,
         Err(e) => {
-            log::warn!("Tray: Failed to load onboarding status: {}, assuming complete", e);
+            log::warn!(
+                "Tray: Failed to load onboarding status: {}, assuming complete",
+                e
+            );
             true // Assume complete if we can't check (safe default)
         }
     };
@@ -284,7 +342,10 @@ async fn check_can_record<R: Runtime>(app: &AppHandle<R>) -> bool {
     match crate::parakeet_engine::commands::parakeet_has_available_models().await {
         Ok(has_models) => has_models,
         Err(e) => {
-            log::warn!("Tray: Failed to check Parakeet models: {}, assuming not ready", e);
+            log::warn!(
+                "Tray: Failed to check Parakeet models: {}, assuming not ready",
+                e
+            );
             false
         }
     }
@@ -296,6 +357,9 @@ pub async fn update_tray_menu_async<R: Runtime>(app: &AppHandle<R>) {
     let recording_state = get_current_recording_state().await;
     log::info!("Tray: Current recording state: {:?}", recording_state);
 
+    // UX-002: tooltip refleja estado actual
+    let tooltip = tooltip_for_state(&recording_state);
+
     // Determine if recording should be allowed
     // Only block recording during incomplete onboarding when no transcription model is ready
     let can_record = check_can_record(app).await;
@@ -304,6 +368,10 @@ pub async fn update_tray_menu_async<R: Runtime>(app: &AppHandle<R>) {
     if let Ok(menu) = build_menu(app, recording_state, can_record) {
         if let Some(tray) = app.tray_by_id("main-tray") {
             let result = tray.set_menu(Some(menu));
+            // UX-002: set_tooltip best-effort
+            if let Err(e) = tray.set_tooltip(Some(tooltip)) {
+                log::warn!("Tray: failed to set tooltip: {}", e);
+            }
             log::info!("Tray: Menu update result: {:?}", result);
         } else {
             log::warn!("Tray: Could not find tray with id 'main-tray'");
@@ -330,8 +398,9 @@ fn build_menu<R: Runtime>(
     } else {
         match state {
             RecordingState::Stopped => {
-                builder = builder
-                    .item(&MenuItemBuilder::with_id("toggle_recording", "Start Recording").build(app)?);
+                builder = builder.item(
+                    &MenuItemBuilder::with_id("toggle_recording", "Start Recording").build(app)?,
+                );
             }
             RecordingState::Starting => {
                 builder = builder.item(
@@ -342,8 +411,14 @@ fn build_menu<R: Runtime>(
             }
             RecordingState::Recording => {
                 builder = builder
-                    .item(&MenuItemBuilder::with_id("pause_recording", "⏸ Pause Recording").build(app)?)
-                    .item(&MenuItemBuilder::with_id("stop_recording", "⏹ Stop Recording").build(app)?);
+                    .item(
+                        &MenuItemBuilder::with_id("pause_recording", "⏸ Pause Recording")
+                            .build(app)?,
+                    )
+                    .item(
+                        &MenuItemBuilder::with_id("stop_recording", "⏹ Stop Recording")
+                            .build(app)?,
+                    );
             }
             RecordingState::Pausing => {
                 builder = builder
@@ -352,7 +427,10 @@ fn build_menu<R: Runtime>(
                             .enabled(false)
                             .build(app)?,
                     )
-                    .item(&MenuItemBuilder::with_id("stop_recording", "⏹ Stop Recording").build(app)?);
+                    .item(
+                        &MenuItemBuilder::with_id("stop_recording", "⏹ Stop Recording")
+                            .build(app)?,
+                    );
             }
             RecordingState::Paused => {
                 builder = builder
@@ -360,7 +438,10 @@ fn build_menu<R: Runtime>(
                         &MenuItemBuilder::with_id("resume_recording", "▶ Resume Recording")
                             .build(app)?,
                     )
-                    .item(&MenuItemBuilder::with_id("stop_recording", "⏹ Stop Recording").build(app)?);
+                    .item(
+                        &MenuItemBuilder::with_id("stop_recording", "⏹ Stop Recording")
+                            .build(app)?,
+                    );
             }
             RecordingState::Resuming => {
                 builder = builder
@@ -369,7 +450,10 @@ fn build_menu<R: Runtime>(
                             .enabled(false)
                             .build(app)?,
                     )
-                    .item(&MenuItemBuilder::with_id("stop_recording", "⏹ Stop Recording").build(app)?);
+                    .item(
+                        &MenuItemBuilder::with_id("stop_recording", "⏹ Stop Recording")
+                            .build(app)?,
+                    );
             }
             RecordingState::Stopping => {
                 builder = builder.item(
@@ -391,7 +475,7 @@ fn build_menu<R: Runtime>(
         .build()
 }
 
-fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
+pub fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -400,4 +484,15 @@ fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
     } else {
         log::warn!("Could not find main window");
     }
+}
+
+/// UX-MINIMIZED-BUTTON (2026-04-08):
+/// Comando Tauri expuesto al frontend para que cualquier acción crítica pueda
+/// garantizar que la ventana esté visible antes de ejecutarse. Útil cuando el
+/// usuario minimizó la app y un evento asíncrono (recuperación, meeting-detected,
+/// notificación) necesita su atención.
+#[tauri::command]
+pub async fn focus_main_window_cmd<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    focus_main_window(&app);
+    Ok(())
 }

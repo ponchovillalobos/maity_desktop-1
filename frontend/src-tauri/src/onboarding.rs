@@ -1,12 +1,11 @@
+use anyhow::Result;
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_store::StoreExt;
-use log::{info, warn, error};
-use anyhow::Result;
 
-use crate::state::AppState;
 use crate::database::repositories::setting::SettingsRepository;
-
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OnboardingStatus {
@@ -19,8 +18,8 @@ pub struct OnboardingStatus {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ModelStatus {
-    pub parakeet: String,  // "downloaded" | "not_downloaded" | "downloading"
-    pub summary: String,   // Generic field for summary model (gemma3:1b or gemma3:4b)
+    pub parakeet: String, // "downloaded" | "not_downloaded" | "downloading"
+    pub summary: String,  // Generic field for summary model (gemma3:1b or gemma3:4b)
 }
 
 impl Default for OnboardingStatus {
@@ -31,18 +30,15 @@ impl Default for OnboardingStatus {
             current_step: 1,
             model_status: ModelStatus {
                 parakeet: "not_downloaded".to_string(),
-                summary: "not_downloaded".to_string(),  // Changed from gemma
+                summary: "not_downloaded".to_string(), // Changed from gemma
             },
             last_updated: chrono::Utc::now().to_rfc3339(),
         }
     }
 }
 
-
 /// Load onboarding status from store
-pub async fn load_onboarding_status<R: Runtime>(
-    app: &AppHandle<R>,
-) -> Result<OnboardingStatus> {
+pub async fn load_onboarding_status<R: Runtime>(app: &AppHandle<R>) -> Result<OnboardingStatus> {
     // Try to load from Tauri store
     let store = match app.store("onboarding-status.json") {
         Ok(store) => store,
@@ -56,12 +52,17 @@ pub async fn load_onboarding_status<R: Runtime>(
     let status = if let Some(value) = store.get("status") {
         match serde_json::from_value::<OnboardingStatus>(value.clone()) {
             Ok(s) => {
-                info!("Loaded onboarding status from store - Step: {}, Completed: {}",
-                      s.current_step, s.completed);
+                info!(
+                    "Loaded onboarding status from store - Step: {}, Completed: {}",
+                    s.current_step, s.completed
+                );
                 s
             }
             Err(e) => {
-                warn!("Failed to deserialize onboarding status: {}, using defaults", e);
+                warn!(
+                    "Failed to deserialize onboarding status: {}, using defaults",
+                    e
+                );
                 OnboardingStatus::default()
             }
         }
@@ -78,11 +79,14 @@ pub async fn save_onboarding_status<R: Runtime>(
     app: &AppHandle<R>,
     status: &OnboardingStatus,
 ) -> Result<()> {
-    info!("Saving onboarding status: step={}, completed={}",
-          status.current_step, status.completed);
+    info!(
+        "Saving onboarding status: step={}, completed={}",
+        status.current_step, status.completed
+    );
 
     // Get or create store
-    let store = app.store("onboarding-status.json")
+    let store = app
+        .store("onboarding-status.json")
         .map_err(|e| anyhow::anyhow!("Failed to access onboarding store: {}", e))?;
 
     // Update last_updated timestamp
@@ -97,7 +101,8 @@ pub async fn save_onboarding_status<R: Runtime>(
     store.set("status", status_value);
 
     // Persist to disk
-    store.save()
+    store
+        .save()
         .map_err(|e| anyhow::anyhow!("Failed to save onboarding store to disk: {}", e))?;
 
     info!("Successfully persisted onboarding status to disk");
@@ -105,19 +110,19 @@ pub async fn save_onboarding_status<R: Runtime>(
 }
 
 /// Reset onboarding status (delete from store)
-pub async fn reset_onboarding_status<R: Runtime>(
-    app: &AppHandle<R>,
-) -> Result<()> {
+pub async fn reset_onboarding_status<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     info!("Resetting onboarding status");
 
-    let store = app.store("onboarding-status.json")
+    let store = app
+        .store("onboarding-status.json")
         .map_err(|e| anyhow::anyhow!("Failed to access onboarding store: {}", e))?;
 
     // Clear the status key
     store.delete("status");
 
     // Persist deletion to disk
-    store.save()
+    store
+        .save()
         .map_err(|e| anyhow::anyhow!("Failed to save onboarding store after reset: {}", e))?;
 
     info!("Successfully reset onboarding status");
@@ -135,7 +140,8 @@ pub async fn get_onboarding_status<R: Runtime>(
 
     // Return None if it's the default (never saved before)
     // Check if we have any saved data by seeing if the store has the key
-    let store = app.store("onboarding-status.json")
+    let store = app
+        .store("onboarding-status.json")
         .map_err(|e| format!("Failed to access store: {}", e))?;
 
     if store.get("status").is_none() {
@@ -156,9 +162,7 @@ pub async fn save_onboarding_status_cmd<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn reset_onboarding_status_cmd<R: Runtime>(
-    app: AppHandle<R>,
-) -> Result<(), String> {
+pub async fn reset_onboarding_status_cmd<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     reset_onboarding_status(&app)
         .await
         .map_err(|e| format!("Failed to reset onboarding status: {}", e))
@@ -182,9 +186,11 @@ pub async fn complete_onboarding<R: Runtime>(
         pool,
         "openai",
         "gpt-4o-2024-11-20",
-        "deepgram",  // Whisper model field repurposed - not used with cloud
+        "deepgram", // Whisper model field repurposed - not used with cloud
         None,
-    ).await {
+    )
+    .await
+    {
         error!("Failed to save OpenAI model config: {}", e);
         return Err(format!("Failed to save OpenAI model config: {}", e));
     }
@@ -196,7 +202,9 @@ pub async fn complete_onboarding<R: Runtime>(
         "parakeet",
         "parakeet-tdt-0.6b-v3-int8",
         Some("es-419"),
-    ).await {
+    )
+    .await
+    {
         error!("Failed to save transcription model config: {}", e);
         return Err(format!("Failed to save transcription model config: {}", e));
     }
@@ -209,7 +217,7 @@ pub async fn complete_onboarding<R: Runtime>(
 
     status.completed = true;
     status.current_step = 4; // Max step (4 on macOS with permissions, 3 on other platforms)
-    // Local mode - mark parakeet as pending_download for auto-download at startup
+                             // Local mode - mark parakeet as pending_download for auto-download at startup
     status.model_status.parakeet = "pending_download".to_string();
     status.model_status.summary = "cloud".to_string();
 
