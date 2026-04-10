@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-08",
   "evaluation_cycle": 10,
-  "commits": 49,
-  "iterations": 38,
+  "commits": 55,
+  "iterations": 41,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -439,10 +439,11 @@
           "impact": 6,
           "effort": 4,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://github.com/jazzband/pip-tools"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/30"
         },
         {
           "id": "PY-007",
@@ -1117,10 +1118,11 @@
           "impact": 8,
           "effort": 5,
           "phase": "v3.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://www.vanta.com/resources/soc-2-compliance"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/29"
         },
         {
           "id": "OPS-009",
