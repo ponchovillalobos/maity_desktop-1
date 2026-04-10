@@ -415,6 +415,26 @@ impl SidecarManager {
         self.start_health_check_loop();
         self.start_idle_check_loop();
 
+        // LLM-005: fire-and-forget warmup to pre-load GGUF weights.
+        // Runs concurrently with app startup — first real Generate will find the model hot.
+        let warmup_manager = Self {
+            child_process: self.child_process.clone(),
+            stdin_writer: self.stdin_writer.clone(),
+            stdout_reader: self.stdout_reader.clone(),
+            last_activity: self.last_activity.clone(),
+            is_healthy: self.is_healthy.clone(),
+            should_shutdown: self.should_shutdown.clone(),
+            active_request_count: self.active_request_count.clone(),
+            helper_binary_path: self.helper_binary_path.clone(),
+            current_model_path: self.current_model_path.clone(),
+            idle_timeout_secs: self.idle_timeout_secs,
+        };
+        tokio::spawn(async move {
+            if let Err(e) = warmup_manager.warmup().await {
+                log::warn!("LLM-005: warmup failed (non-fatal): {}", e);
+            }
+        });
+
         Ok(())
     }
 
@@ -477,6 +497,33 @@ impl SidecarManager {
         }
 
         Ok(line.trim().to_string())
+    }
+
+    /// LLM-005: Warm up the model to eliminate cold-start latency on the first real Generate.
+    /// Sends a Generate with max_tokens=1 so llama.cpp loads the GGUF weights into memory
+    /// (GPU layers, KV-cache alloc, etc.) during app startup instead of on the first user request.
+    pub async fn warmup(&self) -> Result<()> {
+        log::info!("LLM-005: Starting llama-helper warmup (max_tokens=1)...");
+        let start = std::time::Instant::now();
+
+        let request = serde_json::json!({
+            "type": "generate",
+            "prompt": "warmup",
+            "max_tokens": 1,
+        })
+        .to_string();
+
+        let timeout = Duration::from_secs(60); // GGUF load can take up to ~15s on slow HDD
+        let response = self.send_request(request, timeout).await.map_err(|e| {
+            anyhow!("LLM-005: warmup Generate failed: {}", e)
+        })?;
+
+        log::info!(
+            "LLM-005: llama-helper warmup complete in {:.1}s (response preview: {})",
+            start.elapsed().as_secs_f32(),
+            &response[..response.len().min(80)]
+        );
+        Ok(())
     }
 
     /// Send ping to keep sidecar alive
