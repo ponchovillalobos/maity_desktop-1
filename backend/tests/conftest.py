@@ -43,6 +43,25 @@ async def test_client(tmp_db_path):
     import main as main_module
     importlib.reload(main_module)
 
+    # The lifespan context manager would set main_module.db / processor, but
+    # AsyncClient does NOT trigger lifespan by default. Manually inject both
+    # so routes that do ``from main import db / processor`` at call-time get
+    # real instances instead of None.
+    test_db = DatabaseManager(db_path=tmp_db_path)
+    main_module.db = test_db
+
+    # SummaryProcessor also needs a db. Patch it without calling the full
+    # constructor (which tries to connect to Ollama/OpenAI).
+    class _StubProcessor:
+        """Minimal processor stub for tests: only db access is needed."""
+        def __init__(self, db):
+            self.db = db
+    main_module.processor = _StubProcessor(test_db)
+
+    if hasattr(main_module, 'app') and hasattr(main_module.app, 'state'):
+        main_module.app.state.db = test_db
+        main_module.app.state.processor = main_module.processor
+
     app = main_module.app
 
     async with httpx.AsyncClient(

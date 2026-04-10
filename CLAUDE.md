@@ -182,8 +182,11 @@ audio/
 - Microfono/altavoces -> `devices/microphone.rs` o `devices/speakers.rs`
 - Captura de audio -> `capture/microphone.rs` o `capture/system.rs`
 - Mezcla/procesamiento -> `pipeline.rs`
+- Preprocessing DSP (UX-010) -> `audio/dsp.rs` (dc_remove, high_pass_80hz, peak_normalize_minus3db)
 - Flujo de grabacion -> `recording_manager.rs` + `recording_saver.rs` + `incremental_saver.rs`
 - Transcripcion local -> `transcription/engine.rs` + `transcription/worker.rs`
+- Filtro anti-hallucination Parakeet (UX-013) -> `parakeet_engine/text_cleanup.rs`
+- Motor Parakeet principal -> `parakeet_engine/parakeet_engine.rs` (ONNX, recycle cada 100 inf.)
 - Transcripcion nube -> `transcription/deepgram_provider.rs`
 
 ### Comunicacion Rust <-> Frontend
