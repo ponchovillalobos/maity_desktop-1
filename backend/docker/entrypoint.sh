@@ -33,7 +33,8 @@ log_debug() {
 
 # Default configuration
 WHISPER_MODEL=${WHISPER_MODEL:-models/ggml-base.en.bin}
-WHISPER_HOST=${WHISPER_HOST:-0.0.0.0}
+# SEC-006: default localhost; set WHISPER_HOST=0.0.0.0 explicitly for LAN access
+WHISPER_HOST=${WHISPER_HOST:-127.0.0.1}
 WHISPER_PORT=${WHISPER_PORT:-8178}
 WHISPER_THREADS=${WHISPER_THREADS:-0}
 WHISPER_USE_GPU=${WHISPER_USE_GPU:-true}
@@ -428,7 +429,7 @@ Commands:
 
 Environment Variables:
   WHISPER_MODEL          Model path (default: models/ggml-base.en.bin)
-  WHISPER_HOST           Server host (default: 0.0.0.0)
+  WHISPER_HOST           Server host (default: 127.0.0.1 — use 0.0.0.0 for LAN access)
   WHISPER_PORT           Server port (default: 8178)
   WHISPER_THREADS        Thread count (default: auto)
   WHISPER_USE_GPU        Enable GPU (default: true)
