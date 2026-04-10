@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-08",
   "evaluation_cycle": 10,
-  "commits": 57,
-  "iterations": 42,
+  "commits": 59,
+  "iterations": 44,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -99,10 +99,11 @@
           "impact": 6,
           "effort": 3,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://owasp.org/www-project-top-ten/"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/33"
         },
         {
           "id": "SEC-007",
@@ -1089,10 +1090,11 @@
           "impact": 5,
           "effort": 2,
           "phase": "v1.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             ".github/workflows/build-windows.yml"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/32"
         },
         {
           "id": "OPS-007",
