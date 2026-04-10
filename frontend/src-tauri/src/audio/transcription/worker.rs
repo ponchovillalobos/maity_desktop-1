@@ -790,10 +790,19 @@ pub fn start_transcription_task<R: Runtime>(
 
         // Wait for all workers to complete
         for (worker_id, handle) in worker_handles.into_iter().enumerate() {
-            if let Err(e) = handle.await {
-                error!("Worker {} panicked: {:?}", worker_id, e);
-            } else {
-                info!("Worker {} completed successfully", worker_id);
+            match handle.await {
+                Ok(()) => info!("Worker {} completed successfully", worker_id),
+                Err(e) => {
+                    error!("Worker {} panicked: {:?}", worker_id, e);
+                    // RUST-002: report audio worker panics to Sentry with worker context
+                    // (the global panic hook also fires, but this adds worker_id + task context)
+                    if e.is_panic() {
+                        sentry::capture_message(
+                            &format!("Audio transcription worker {} panicked: {:?}", worker_id, e),
+                            sentry::Level::Fatal,
+                        );
+                    }
+                }
             }
         }
 
