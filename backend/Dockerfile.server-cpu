@@ -1,7 +1,13 @@
 # Multi-stage build for Whisper Server (CPU-only)
 # This version provides maximum compatibility across all systems
+#
+# PY-007: Base image pinned to a specific digest to ensure reproducible builds
+# and prevent supply-chain cache poisoning. Update digest periodically and bump
+# in lockstep with security advisories.
+# Source: https://hub.docker.com/_/ubuntu (look up jammy-* tag digest)
+ARG UBUNTU_DIGEST=sha256:0e5e4a57c2499249aafc3b40fcd541e9a456aab7296681a3994d631587203f97
 
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:22.04@${UBUNTU_DIGEST} AS builder
 
 # Set build arguments
 ARG WHISPER_VERSION=master
@@ -42,7 +48,7 @@ RUN cmake -B build \
 RUN cmake --build build --config Release --target whisper-server -j$(nproc)
 
 # Runtime stage - minimal image
-FROM ubuntu:22.04 AS runtime
+FROM ubuntu:22.04@${UBUNTU_DIGEST} AS runtime
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \

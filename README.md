@@ -2,37 +2,59 @@
     <h1>
         <img src="docs/Meetily-6.png" style="border-radius: 10px;" />
         <br>
-        Maity Desktop - Asistente de Reuniones con IA
+        Maity Desktop
     </h1>
     <br>
-    <a href="https://github.com/ponchovillalobos/maity-desktop/releases/"><img src="https://img.shields.io/badge/Descargar-v0.2.0-brightgreen" alt="Descargar"></a>
-    <a href="https://github.com/ponchovillalobos/maity-desktop/releases"><img src="https://img.shields.io/badge/Licencia-MIT-blue" alt="Licencia"></a>
-    <a href="https://github.com/ponchovillalobos/maity-desktop/releases"><img src="https://img.shields.io/badge/SO_Soportado-Windows-white" alt="SO Soportado"></a>
-    <br>
-    <h3>
-    <br>
-    Transcripcion con Deepgram - Resumenes con ChatGPT - Facil de Usar
-    </h3>
+    <strong>El asistente de reuniones con IA disenado para profesionales hispanohablantes que valoran su privacidad.</strong>
+    <br><br>
+    <em>Convierte horas de reuniones en notas accionables en segundos. Sin enviar tu data a Google. Sin nube ajena. Lo que pasa en tu reunion, se queda en tu equipo (o en el proveedor que TU elijas, con TU API key).</em>
+    <br><br>
+    <a href="https://github.com/Sixale730/maity_desktop/releases/"><img src="https://img.shields.io/badge/Descargar-v0.2.31-brightgreen" alt="Descargar"></a>
+    <a href="LICENSE.md"><img src="https://img.shields.io/badge/Licencia-MIT-blue" alt="Licencia"></a>
+    <a href="https://github.com/Sixale730/maity_desktop/releases"><img src="https://img.shields.io/badge/SO-Windows%20%7C%20macOS%20pronto-white" alt="SO"></a>
+    <a href="PRIVACY_POLICY.md"><img src="https://img.shields.io/badge/Privacidad-honesta-orange" alt="Privacy"></a>
 </div>
 
 ---
 
-## Que es Maity Desktop?
+## Por que Maity? (UVP — BIZ-002)
 
-Maity Desktop es un asistente de reuniones con inteligencia artificial. Graba tus reuniones, las transcribe en tiempo real con **Deepgram** y genera resumenes automaticos con **ChatGPT**.
+Si trabajas en LATAM y graba reuniones de cliente, board o equipo:
 
-Perfecto para profesionales que necesitan documentar sus reuniones de forma rapida y precisa.
+| Otros (Otter, Fireflies, Granola, Fathom) | Maity |
+|---|---|
+| Ingles primero, espanol como afterthought | **Espanol primero** (es-419), templates locales |
+| Tu data en sus servidores indefinidamente | **Tu eliges**: cloud (BYOK con TUS keys) o 100% local con Whisper |
+| SaaS opaco, no sabes a donde va tu audio | **Open source MIT** auditable + lista publica de [subprocesadores](docs/SUBPROCESSORS.md) |
+| Pricing por seat creciente | **Sin lock-in**: trae tus propias keys de Deepgram/OpenAI o auto-aloja todo |
+| Telemetria opt-out (o ninguna opcion) | **Opt-IN explicito**, contenido de reuniones nunca sale |
+| Sin DPA enterprise | **DPA template + SUBPROCESSORS.md** listos para tu compliance team |
+
+**Para quien NO es Maity**: si necesitas pre-built integraciones con Salesforce/HubSpot/Slack hoy mismo, Otter es mas rapido. Si solo grabas conversaciones casuales en ingles sin pensar en privacidad, Fathom es gratis y suficiente. Maity es para quienes TIENEN que controlar donde va su data.
 
 ---
 
-## Caracteristicas Principales
+## Que hace concretamente
 
-- **Transcripcion Deepgram:** Transcripcion rapida y precisa en tiempo real con la API de Deepgram.
-- **Resumenes con ChatGPT:** Genera resumenes automaticos, puntos clave y acciones usando OpenAI GPT.
-- **Transcripcion en Tiempo Real:** Obtén la transcripcion de tu reunion mientras ocurre.
-- **Deteccion de Reuniones:** Detecta automaticamente cuando inicias Zoom, Teams, Meet, etc.
-- **Modo Oscuro:** Interfaz completamente adaptada para trabajar de noche.
-- **Grabacion Dual:** Captura audio del microfono y del sistema simultaneamente.
+1. **Captura dual**: graba microfono + audio del sistema (Zoom/Teams/Meet) simultaneamente
+2. **Transcribe en vivo** con Deepgram (cloud, BYOK) o Whisper local (sin nube)
+3. **Genera resumenes** automaticos con ChatGPT, Claude, Groq (BYOK) o llama-helper local
+4. **Persiste todo localmente** en SQLite con checkpoints cada 30s (zero data loss)
+5. **Detecta automaticamente** Zoom/Teams/Meet abiertos y sugiere grabar
+6. **Templates en espanol** (Standup Diario, Reunion Standard, Sesion Psiquiatrica, etc.)
+
+---
+
+## Caracteristicas tecnicas (para developers)
+
+- **Stack**: Tauri 2 (Rust + Next.js 14 + TypeScript) + Python FastAPI backend
+- **Tests**: 77/77 pasando en CPU-only (refleja entorno B2B real, sin GPU)
+- **Quality gates**: cargo fmt + cargo clippy + cargo test + tsc + eslint
+- **Tamaño**: ~150-300 MB por whisper-rs + ort + ffmpeg-sidecar (en el roadmap reducirlo a <80MB con lazy download)
+- **Soporta**: Deepgram, OpenAI, Anthropic, Groq, Ollama, llama.cpp local
+- **Privacidad-first**: ver [PRIVACY_POLICY.md](PRIVACY_POLICY.md) (honesto sobre flujo cloud) y [SUBPROCESSORS.md](docs/SUBPROCESSORS.md)
+
+---
 
 ---
 

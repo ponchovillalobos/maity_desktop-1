@@ -91,6 +91,24 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             setApiKey(null);
         }
     };
+    // STT-005: costo por minuto por proveedor/modelo (USD, precios públicos)
+    const PROVIDER_COST_PER_MIN: Record<string, string> = {
+        'deepgram:nova-3':           '~$0.0043/min (~$0.26/h)',
+        'deepgram:nova-2':           '~$0.0043/min (~$0.26/h)',
+        'deepgram:nova-2-phonecall': '~$0.0043/min (~$0.26/h)',
+        'deepgram:nova-2-meeting':   '~$0.0043/min (~$0.26/h)',
+        'localWhisper:*':            'Gratis (local)',
+        'parakeet:*':                'Gratis (local)',
+        'moonshine:*':               'Gratis (local)',
+    };
+    const providerCostLabel = (() => {
+        const key = `${transcriptModelConfig.provider}:${transcriptModelConfig.model}`;
+        if (PROVIDER_COST_PER_MIN[key]) return PROVIDER_COST_PER_MIN[key];
+        const wildcardKey = `${transcriptModelConfig.provider}:*`;
+        if (PROVIDER_COST_PER_MIN[wildcardKey]) return PROVIDER_COST_PER_MIN[wildcardKey];
+        return null;
+    })();
+
     const modelOptions = {
         localWhisper: [selectedWhisperModel],
         parakeet: [selectedParakeetModel],
@@ -215,6 +233,16 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                         {transcriptModelConfig.provider === 'deepgram' && (
                             <p className="text-xs text-[#6a6a6d] dark:text-gray-400 mt-2 mx-1">
                                 Deepgram usa autenticacion automatica. Solo necesitas iniciar sesion con Google.
+                            </p>
+                        )}
+                        {/* STT-005: indicador de costo estimado por proveedor */}
+                        {providerCostLabel && (
+                            <p className={`text-xs mt-2 mx-1 font-medium ${
+                                transcriptModelConfig.provider === 'deepgram'
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-green-600 dark:text-green-400'
+                            }`}>
+                                💰 Costo estimado: {providerCostLabel}
                             </p>
                         )}
                     </div>

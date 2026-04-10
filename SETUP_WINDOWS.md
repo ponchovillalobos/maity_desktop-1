@@ -216,3 +216,70 @@ Para mas detalles, consultar:
 | `clang` instalado pero `libclang` no encontrado | LLVM no esta en PATH | Agregar `C:\Program Files\LLVM\bin` al PATH del sistema. Alternativamente, definir la variable de entorno `LIBCLANG_PATH=C:\Program Files\LLVM\bin`. |
 | El backend no inicia (error de modulo) | Virtual environment no activado o dependencias no instaladas | Activar venv (`.\venv\Scripts\Activate.ps1`) y ejecutar `pip install -r requirements.txt`. |
 | FFmpeg no encontrado al codificar grabaciones | FFmpeg no esta en PATH | Instalar FFmpeg (`winget install Gyan.FFmpeg`) o colocarlo en el directorio de trabajo. |
+
+---
+
+## Rotacion de la clave del updater Tauri (OPS-007)
+
+El updater de Tauri firma cada release con una clave privada minisign y verifica
+con la clave publica embebida en `frontend/src-tauri/tauri.conf.json` (campo
+`plugins.updater.pubkey`). **Si la clave privada se compromete o se pierde,
+debes rotarla siguiendo este procedimiento.**
+
+### Procedimiento de rotacion (canal puente)
+
+1. **Generar nueva clave minisign**
+
+   ```powershell
+   # Desde PowerShell, en el repo
+   tauri signer generate -w frontend/src-tauri/tauri-updater.key.new
+   ```
+
+   Esto crea un par minisign nuevo. **Guarda el archivo `.key.new` en tu password
+   manager o en GitHub Secrets como `TAURI_SIGNING_PRIVATE_KEY_NEW`.**
+
+2. **Publicar release v_X con DOBLE FIRMA (canal puente)**
+
+   El plugin `tauri-plugin-updater` v2.x soporta verificacion de multiples
+   pubkeys mediante un fork o un build personalizado. Pasos:
+
+   - Editar `tauri.conf.json` para incluir AMBAS pubkeys (la vieja y la nueva)
+     temporalmente. Esto requiere un fork del plugin updater o usar la nueva
+     funcionalidad de multi-key cuando este disponible.
+   - Build firmando con la NUEVA clave: `TAURI_SIGNING_PRIVATE_KEY=<nueva>`
+   - Publicar como release X.Y.Z+rotation
+
+3. **Esperar adopcion >95% de la version puente**
+
+   Monitorear telemetria PostHog (`app.version`) hasta que >95% de los
+   usuarios activos esten en X.Y.Z+rotation. Tipicamente 7-14 dias en B2B.
+
+4. **Eliminar la pubkey vieja**
+
+   Editar `tauri.conf.json` para dejar SOLO la pubkey nueva. Build siguiente
+   release X.Y.Z+1 firmada solo con la nueva clave.
+
+5. **Rotar el secreto de GitHub Actions**
+
+   - Borrar `TAURI_SIGNING_PRIVATE_KEY` viejo de GitHub Actions secrets
+   - Renombrar `TAURI_SIGNING_PRIVATE_KEY_NEW` -> `TAURI_SIGNING_PRIVATE_KEY`
+   - Verificar que `.github/workflows/build-windows.yml` lee del secret correcto
+
+6. **Documentar el evento**
+
+   - Issue publico explicando que hubo una rotacion (sin detalles del compromiso)
+   - Update a este documento con la fecha de rotacion
+
+### Cuando rotar (triggers)
+
+- Compromiso confirmado o sospechado de la clave privada (ej: leak en logs)
+- Cambio de cuenta GitHub responsable de releases
+- Auditoria periodica anual (best practice)
+- Antes de un cambio mayor de version (v1.0 release)
+
+### Prevencion
+
+- Nunca commitear `.key` files al repo (incluido en `.gitignore`)
+- Almacenar la clave privada solo en GitHub Secrets + un password manager con MFA
+- Usar GitHub Environments con review obligatoria para releases que firmen
+- Limitar quien tiene acceso al secret a un grupo pequeno de mantenedores

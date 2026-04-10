@@ -1,6 +1,10 @@
 use ndarray::{Array, Array1, Array2, Array3, ArrayD, ArrayViewD, IxDyn};
 use once_cell::sync::Lazy;
 use ort::execution_providers::CPUExecutionProvider;
+#[cfg(target_os = "windows")]
+use ort::execution_providers::DirectMLExecutionProvider;
+#[cfg(target_os = "macos")]
+use ort::execution_providers::CoreMLExecutionProvider;
 use ort::inputs;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
@@ -53,7 +57,10 @@ pub struct ParakeetModel {
 
 impl Drop for ParakeetModel {
     fn drop(&mut self) {
-        log::debug!("Dropping ParakeetModel with {} vocab tokens", self.vocab.len());
+        log::debug!(
+            "Dropping ParakeetModel with {} vocab tokens",
+            self.vocab.len()
+        );
     }
 }
 
@@ -88,14 +95,46 @@ impl ParakeetModel {
         intra_threads: Option<usize>,
         try_quantized: bool,
     ) -> Result<Session, ParakeetError> {
-        let providers = vec![CPUExecutionProvider::default().build()];
+        // QW-3 (2026-04-08 iter #31): habilitar GPU execution providers.
+        // Los providers se registran en orden de prioridad. ORT intenta el
+        // primero; si falla, cae al siguiente; CPU es fallback universal.
+        //
+        // Impacto medido en la literatura (audit P-4):
+        //   - DirectML en RTX 3060 móvil: inferencia 600ms -> ~80ms (7.5x)
+        //   - CoreML en M1: 600ms -> ~100ms (6x)
+        //
+        // Si el modelo se compiló sin la feature (ej. Linux, CPU build),
+        // solo CPU se registra — comportamiento igual al pre-iter #31.
+        let providers = {
+            #[allow(unused_mut)]
+            let mut v: Vec<ort::execution_providers::ExecutionProviderDispatch> = Vec::new();
+
+            #[cfg(target_os = "windows")]
+            {
+                v.push(DirectMLExecutionProvider::default().with_device_id(0).build());
+                log::info!("Parakeet: registered DirectML EP (device 0) + CPU fallback");
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                v.push(CoreMLExecutionProvider::default().build());
+                log::info!("Parakeet: registered CoreML EP + CPU fallback");
+            }
+
+            // CPU fallback siempre al final.
+            v.push(CPUExecutionProvider::default().build());
+            v
+        };
 
         // Try quantized version first if requested, fallback to regular version
         let model_filename = if try_quantized {
             let quantized_name = format!("{}.int8.onnx", model_name);
             let quantized_path = model_dir.as_ref().join(&quantized_name);
             if quantized_path.exists() {
-                log::info!("Loading quantized Parakeet model from {}...", quantized_name);
+                log::info!(
+                    "Loading quantized Parakeet model from {}...",
+                    quantized_name
+                );
                 quantized_name
             } else {
                 let regular_name = format!("{}.onnx", model_name);
@@ -427,7 +466,7 @@ impl ParakeetModel {
             })
             .collect();
 
-        let text = match &*DECODE_SPACE_RE {
+        let raw_text = match &*DECODE_SPACE_RE {
             Ok(regex) => regex
                 .replace_all(&tokens.join(""), |caps: &regex::Captures| {
                     if caps.get(1).is_some() {
@@ -439,6 +478,9 @@ impl ParakeetModel {
                 .to_string(),
             Err(_) => tokens.join(""), // Fallback if regex failed to compile
         };
+
+        // UX-013: strip hallucinations + special tokens + consecutive repetitions.
+        let text = super::text_cleanup::clean_transcription(&raw_text);
 
         let float_timestamps: Vec<f32> = timestamps
             .iter()
