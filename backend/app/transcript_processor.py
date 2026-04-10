@@ -16,6 +16,9 @@ from ollama import chat
 import asyncio
 from ollama import AsyncClient
 
+# LLM-004: prompts localizados (es/en) — reemplaza el prompt hardcodeado en inglés
+from prompts import build_prompt, detect_lang
+
 
 
 
@@ -258,36 +261,18 @@ class TranscriptProcessor:
             num_chunks = len(chunks)
             logger.info(f"Split transcript into {num_chunks} chunks.")
 
+            # LLM-004: detectar idioma del transcript para usar prompt localizado (es/en)
+            full_text_sample = " ".join(chunks[:3])
+            lang = detect_lang(full_text_sample)
+            logger.info(f"LLM-004: detected language '{lang}' for transcript (chunks={num_chunks})")
+
             for i, chunk in enumerate(chunks):
                 logger.info(f"Processing chunk {i+1}/{num_chunks}...")
                 try:
                     # Run the agent to get the structured summary for the chunk
                     if model != "ollama":
-                        summary_result = await agent.run(
-                            f"""Given the following meeting transcript chunk, extract the relevant information according to the required JSON structure. If a specific section (like Critical Deadlines) has no relevant information in this chunk, return an empty list for its 'blocks'. Ensure the output is only the JSON data.
-
-                            IMPORTANT: Block types must be one of: 'text', 'bullet', 'heading1', 'heading2'
-                            - Use 'text' for regular paragraphs
-                            - Use 'bullet' for list items
-                            - Use 'heading1' for major headings
-                            - Use 'heading2' for subheadings
-                            
-                            For the color field, use 'gray' for less important content or '' (empty string) for default.
-
-                            Transcript Chunk:
-                            ---
-                        {chunk}
-                        ---
-
-                        Please capture all relevant action items. Transcription can have spelling mistakes. correct it if required. context is important.
-                        
-                        While generating the summary, please add the following context:
-                        ---
-                        {custom_prompt}
-                        ---
-                        Make sure the output is only the JSON data.
-                        """,
-                    )
+                        localized_prompt = build_prompt(lang, chunk, custom_prompt)
+                        summary_result = await agent.run(localized_prompt)
                     else:
                         logger.info(f"Using Ollama model: {model_name} and chunk size: {chunk_size} with overlap: {overlap}")
                         response = await self.chat_ollama_model(model_name, chunk, custom_prompt)
@@ -326,25 +311,12 @@ class TranscriptProcessor:
             raise
     
     async def chat_ollama_model(self, model_name: str, transcript: str, custom_prompt: str):
+        # LLM-004: usar prompt localizado (es/en) para Ollama también
+        lang = detect_lang(transcript)
+        localized_content = build_prompt(lang, transcript, custom_prompt)
         message = {
-        'role': 'system',
-        'content': f'''
-        Given the following meeting transcript chunk, extract the relevant information according to the required JSON structure. If a specific section (like Critical Deadlines) has no relevant information in this chunk, return an empty list for its 'blocks'. Ensure the output is only the JSON data.
-
-        Transcript Chunk:
-            ---
-            {transcript}
-            ---
-        Please capture all relevant action items. Transcription can have spelling mistakes. correct it if required. context is important.
-        
-        While generating the summary, please add the following context:
-        ---
-        {custom_prompt}
-        ---
-
-        Make sure the output is only the JSON data.
-    
-        ''',
+            'role': 'system',
+            'content': localized_content,
         }
 
         # Create a client and track it for cleanup
