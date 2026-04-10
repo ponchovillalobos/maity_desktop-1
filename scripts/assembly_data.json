@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-08",
   "evaluation_cycle": 10,
-  "commits": 43,
-  "iterations": 35,
+  "commits": 45,
+  "iterations": 36,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -825,10 +825,11 @@
           "impact": 6,
           "effort": 4,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://deepgram.com/pricing"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/26"
         },
         {
           "id": "STT-006",
