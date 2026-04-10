@@ -1,0 +1,706 @@
+{
+  "version": "1.0",
+  "generated": "2026-04-07",
+  "description": "Golden set ML-002: 50 conversaciones sintéticas ES-MX para evaluar análisis de ventas (sentimiento, objeciones, score, action items).",
+  "sentiment_distribution": {
+    "positivo": 17,
+    "negativo": 17,
+    "neutral": 16
+  },
+  "objection_types": [
+    "precio",
+    "tiempo",
+    "autoridad",
+    "necesidad",
+    "rechazo"
+  ],
+  "conversations": [
+    {
+      "id": "positivo_01_cierre_rapido_software",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Buenos días, le llamo de Maity para mostrarle nuestro CRM.\n[00:14] Cliente: Justo estaba buscando algo así, cuénteme más.\n[00:25] Tú: Incluye analítica de ventas y seguimiento automático de leads.\n[00:40] Cliente: Me interesa mucho, ¿cuánto cuesta?\n[00:48] Tú: Son 500 pesos al mes por usuario.\n[00:56] Cliente: Perfecto, acepto. Mándeme el contrato hoy mismo.",
+      "objeciones": [],
+      "score": 92,
+      "action_items": [
+        "Enviar contrato hoy",
+        "Dar de alta al cliente en CRM"
+      ],
+      "word_count": 45
+    },
+    {
+      "id": "positivo_02_seguro_auto_cerrado",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Le hablo de Maity Seguros, tenemos un plan integral para su auto.\n[00:16] Cliente: Qué incluye exactamente.\n[00:24] Tú: Cobertura amplia, asistencia 24 horas y deducible bajo.\n[00:37] Cliente: Excelente, justo lo que buscaba. Quiero contratarlo.\n[00:50] Tú: Perfecto, le envío la póliza por correo.\n[01:00] Cliente: Gracias, trato hecho.",
+      "objeciones": [],
+      "score": 95,
+      "action_items": [
+        "Enviar póliza por correo",
+        "Agendar inspección del vehículo"
+      ],
+      "word_count": 40
+    },
+    {
+      "id": "positivo_03_capacitacion_empresa",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Ofrecemos capacitación en ventas para su equipo.\n[00:12] Cliente: Me interesa, hemos tenido bajas ventas este trimestre.\n[00:25] Tú: Trabajamos con grupos de hasta veinte personas.\n[00:36] Cliente: Perfecto, agende una sesión demo la próxima semana.",
+      "objeciones": [],
+      "score": 88,
+      "action_items": [
+        "Agendar demo próxima semana"
+      ],
+      "word_count": 30
+    },
+    {
+      "id": "positivo_04_cliente_entusiasta_marketing",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Le presento nuestro servicio de marketing digital.\n[00:12] Cliente: Justo necesitamos ayuda con redes sociales.\n[00:22] Tú: Manejamos campañas en Facebook, Instagram y Google Ads.\n[00:35] Cliente: Excelente, me interesa. ¿Cuándo podemos empezar?\n[00:47] Tú: Podemos arrancar el lunes con la estrategia.\n[00:58] Cliente: Acepto, gracias por la propuesta.",
+      "objeciones": [],
+      "score": 90,
+      "action_items": [
+        "Iniciar estrategia el lunes",
+        "Enviar contrato de servicios"
+      ],
+      "word_count": 39
+    },
+    {
+      "id": "positivo_05_upsell_exitoso",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Como cliente preferente le ofrecemos el plan premium.\n[00:13] Cliente: Qué beneficios adicionales tiene.\n[00:21] Tú: Incluye soporte prioritario y funciones avanzadas.\n[00:33] Cliente: Me interesa, acepto el upgrade.\n[00:41] Tú: Gracias, procesamos el cambio hoy.",
+      "objeciones": [],
+      "score": 87,
+      "action_items": [
+        "Procesar upgrade hoy"
+      ],
+      "word_count": 28
+    },
+    {
+      "id": "positivo_06_demo_positiva_saas",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Le muestro nuestra plataforma SaaS para gestión de inventario.\n[00:15] Cliente: Se ve muy completa.\n[00:23] Tú: Se integra con su sistema actual sin fricción.\n[00:34] Cliente: Perfecto, me interesa mucho. Envíeme la cotización.\n[00:46] Tú: Se la envío en los próximos minutos.\n[00:55] Cliente: Excelente, gracias.",
+      "objeciones": [],
+      "score": 85,
+      "action_items": [
+        "Enviar cotización",
+        "Agendar onboarding técnico"
+      ],
+      "word_count": 37
+    },
+    {
+      "id": "positivo_07_referido_calido",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Me refirió Juan Pérez, su colega.\n[00:08] Cliente: Ah sí, Juan me habló muy bien de ustedes.\n[00:18] Tú: Le traemos la misma propuesta que a él, adaptada.\n[00:30] Cliente: Me interesa, cuéntame los detalles.\n[00:38] Tú: Es un paquete integral de asesoría contable.\n[00:49] Cliente: Trato hecho, cuándo empezamos.",
+      "objeciones": [],
+      "score": 91,
+      "action_items": [
+        "Firmar contrato",
+        "Agendar kickoff"
+      ],
+      "word_count": 40
+    },
+    {
+      "id": "positivo_08_cliente_habla_bien",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Le llamo por el servicio de limpieza industrial.\n[00:12] Cliente: Excelente, necesitamos justamente eso para nuestra planta.\n[00:26] Tú: Manejamos certificaciones ISO.\n[00:34] Cliente: Perfecto, acepto. Envíe la propuesta formal.",
+      "objeciones": [],
+      "score": 86,
+      "action_items": [
+        "Enviar propuesta formal"
+      ],
+      "word_count": 24
+    },
+    {
+      "id": "positivo_09_venta_corta_confianza",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Hola, soy de Maity Telecom.\n[00:08] Cliente: Gracias por llamar, justo quería renovar mi plan.\n[00:20] Tú: Tenemos promoción vigente esta semana.\n[00:29] Cliente: Me interesa, acepto.",
+      "objeciones": [],
+      "score": 84,
+      "action_items": [
+        "Renovar plan esta semana"
+      ],
+      "word_count": 21
+    },
+    {
+      "id": "positivo_10_consultoria_interes_alto",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Ofrecemos consultoría estratégica para PyMEs.\n[00:11] Cliente: Me interesa mucho, hemos estado estancados.\n[00:21] Tú: Hacemos diagnóstico inicial sin costo.\n[00:30] Cliente: Perfecto, agéndeme el diagnóstico.\n[00:38] Tú: Se lo agendo para el jueves.\n[00:46] Cliente: Excelente, gracias.",
+      "objeciones": [],
+      "score": 89,
+      "action_items": [
+        "Agendar diagnóstico jueves"
+      ],
+      "word_count": 28
+    },
+    {
+      "id": "positivo_11_crm_ventas_enterprise",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Nuestra solución enterprise maneja miles de contactos.\n[00:13] Cliente: Eso es justo lo que necesitamos.\n[00:21] Tú: Incluye integración con SAP y Salesforce.\n[00:31] Cliente: Me interesa, acepto una demo técnica.\n[00:40] Tú: Se la coordino con nuestro ingeniero.\n[00:49] Cliente: Gracias, trato hecho en principio.",
+      "objeciones": [],
+      "score": 83,
+      "action_items": [
+        "Coordinar demo técnica",
+        "Preparar contrato marco"
+      ],
+      "word_count": 36
+    },
+    {
+      "id": "positivo_12_cliente_pide_contrato",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Le llamo del despacho contable Maity.\n[00:09] Cliente: Justo necesito contador, me interesa.\n[00:18] Tú: Manejamos PyMEs con facturación CFDI.\n[00:27] Cliente: Perfecto, mándeme el contrato.",
+      "objeciones": [],
+      "score": 85,
+      "action_items": [
+        "Enviar contrato de servicios contables"
+      ],
+      "word_count": 20
+    },
+    {
+      "id": "positivo_13_capacitacion_ventas_aceptada",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Capacitamos equipos de ventas en cierre consultivo.\n[00:12] Cliente: Excelente, mi equipo lo necesita.\n[00:20] Tú: El curso dura cuatro semanas.\n[00:28] Cliente: Me interesa, acepto. Cotíceme para veinte personas.",
+      "objeciones": [],
+      "score": 86,
+      "action_items": [
+        "Cotizar capacitación 20 personas"
+      ],
+      "word_count": 24
+    },
+    {
+      "id": "positivo_14_publicidad_digital_cerrada",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Le ofrezco gestión de publicidad digital.\n[00:10] Cliente: Me interesa mucho, gracias por llamar.\n[00:19] Tú: Trabajamos con presupuestos desde diez mil pesos.\n[00:31] Cliente: Perfecto, acepto. Iniciamos el lunes.",
+      "objeciones": [],
+      "score": 88,
+      "action_items": [
+        "Iniciar campaña lunes",
+        "Solicitar accesos publicitarios"
+      ],
+      "word_count": 24
+    },
+    {
+      "id": "positivo_15_hosting_migracion",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Ofrecemos hosting empresarial con alta disponibilidad.\n[00:13] Cliente: Justo queremos migrar, nuestro proveedor actual falla.\n[00:26] Tú: La migración es gratuita y sin downtime.\n[00:36] Cliente: Excelente, acepto. Cuándo podemos migrar.\n[00:46] Tú: Esta misma semana si lo desea.\n[00:54] Cliente: Trato hecho.",
+      "objeciones": [],
+      "score": 90,
+      "action_items": [
+        "Agendar migración semana actual",
+        "Enviar checklist pre-migración"
+      ],
+      "word_count": 33
+    },
+    {
+      "id": "positivo_16_seguro_vida_positivo",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Le presento nuestro seguro de vida con ahorro.\n[00:11] Cliente: Me interesa, justo estaba pensando en eso.\n[00:21] Tú: Incluye cobertura por fallecimiento y ahorro programado.\n[00:35] Cliente: Perfecto, acepto el plan básico.",
+      "objeciones": [],
+      "score": 85,
+      "action_items": [
+        "Procesar póliza básica"
+      ],
+      "word_count": 27
+    },
+    {
+      "id": "positivo_17_software_contable_cerrado",
+      "sentimiento": "positivo",
+      "transcript": "[00:00] Tú: Le ofrezco software contable con facturación integrada.\n[00:13] Cliente: Me interesa, acepto una demo.\n[00:21] Tú: Se la coordino para mañana.\n[00:29] Cliente: Excelente, gracias.",
+      "objeciones": [],
+      "score": 82,
+      "action_items": [
+        "Coordinar demo mañana"
+      ],
+      "word_count": 19
+    },
+    {
+      "id": "negativo_01_precio_alto_rechazo",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le hablo de Maity CRM, nuestro plan empresarial.\n[00:12] Cliente: Cuánto cuesta.\n[00:20] Tú: Quince mil pesos al mes.\n[00:28] Cliente: Está muy caro, no me convence.\n[00:36] Tú: Tenemos plan más económico.\n[00:44] Cliente: No gracias, no me interesa.",
+      "objeciones": [
+        {
+          "tipo": "precio",
+          "frase": "muy caro"
+        },
+        {
+          "tipo": "rechazo",
+          "frase": "no me interesa"
+        }
+      ],
+      "score": 25,
+      "action_items": [],
+      "word_count": 30
+    },
+    {
+      "id": "negativo_02_sin_tiempo_ahora",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le quisiera presentar nuestra plataforma.\n[00:10] Cliente: No tengo tiempo ahora, estoy ocupado.\n[00:19] Tú: Solo serán cinco minutos.\n[00:27] Cliente: Le dije que no tengo tiempo, llámeme luego.",
+      "objeciones": [
+        {
+          "tipo": "tiempo",
+          "frase": "no tengo tiempo"
+        }
+      ],
+      "score": 20,
+      "action_items": [],
+      "word_count": 23
+    },
+    {
+      "id": "negativo_03_no_decide_usuario",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le ofrezco capacitación para su equipo.\n[00:09] Cliente: Yo no decido eso, tiene que hablar con mi jefe.\n[00:20] Tú: Puede pasarme su contacto.\n[00:28] Cliente: No puedo darle el contacto, prefiero no seguir.",
+      "objeciones": [
+        {
+          "tipo": "autoridad",
+          "frase": "no decido"
+        },
+        {
+          "tipo": "rechazo",
+          "frase": "no seguir"
+        }
+      ],
+      "score": 22,
+      "action_items": [],
+      "word_count": 28
+    },
+    {
+      "id": "negativo_04_no_necesita_servicio",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Ofrecemos servicio de limpieza profesional.\n[00:10] Cliente: No lo necesitamos, ya tenemos proveedor.\n[00:20] Tú: Podemos igualar su precio.\n[00:28] Cliente: No me interesa, gracias.",
+      "objeciones": [
+        {
+          "tipo": "necesidad",
+          "frase": "no lo necesitamos"
+        },
+        {
+          "tipo": "rechazo",
+          "frase": "no me interesa"
+        }
+      ],
+      "score": 28,
+      "action_items": [],
+      "word_count": 19
+    },
+    {
+      "id": "negativo_05_rechazo_frontal",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Hola, le llamo de Maity.\n[00:08] Cliente: No gracias, no me interesa nada.\n[00:16] Tú: Solo quería presentarle.\n[00:24] Cliente: Por favor no vuelva a llamar.",
+      "objeciones": [
+        {
+          "tipo": "rechazo",
+          "frase": "no me interesa"
+        }
+      ],
+      "score": 15,
+      "action_items": [],
+      "word_count": 20
+    },
+    {
+      "id": "negativo_06_precio_muy_alto_saas",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Nuestra plataforma SaaS cuesta veinte mil al mes.\n[00:12] Cliente: Eso está muy caro para nosotros.\n[00:20] Tú: Tenemos descuentos por volumen.\n[00:28] Cliente: Aun con descuento sigue siendo caro, no me convence.",
+      "objeciones": [
+        {
+          "tipo": "precio",
+          "frase": "muy caro"
+        },
+        {
+          "tipo": "precio",
+          "frase": "sigue siendo caro"
+        }
+      ],
+      "score": 30,
+      "action_items": [],
+      "word_count": 27
+    },
+    {
+      "id": "negativo_07_tiempo_pensar_largo",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le propongo contratar el servicio.\n[00:08] Cliente: Necesito pensarlo bien, no tengo tiempo ahora.\n[00:19] Tú: Cuándo le parece bien que le llame.\n[00:27] Cliente: No sé, prefiero yo llamarle si decido.",
+      "objeciones": [
+        {
+          "tipo": "tiempo",
+          "frase": "no tengo tiempo"
+        },
+        {
+          "tipo": "rechazo",
+          "frase": "prefiero yo llamarle"
+        }
+      ],
+      "score": 32,
+      "action_items": [],
+      "word_count": 26
+    },
+    {
+      "id": "negativo_08_autoridad_consejo_admin",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le ofrezco servicio legal empresarial.\n[00:09] Cliente: Yo no puedo decidir, esto lo ve el consejo de administración.\n[00:24] Tú: Puedo presentarlo al consejo.\n[00:32] Cliente: No es necesario, ya tenemos abogados. No me interesa.",
+      "objeciones": [
+        {
+          "tipo": "autoridad",
+          "frase": "yo no puedo decidir"
+        },
+        {
+          "tipo": "autoridad",
+          "frase": "lo ve el consejo"
+        },
+        {
+          "tipo": "rechazo",
+          "frase": "no me interesa"
+        }
+      ],
+      "score": 25,
+      "action_items": [],
+      "word_count": 29
+    },
+    {
+      "id": "negativo_09_necesidad_inexistente",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le presento nuestro CRM de ventas.\n[00:08] Cliente: No lo necesito, manejo todo en Excel.\n[00:17] Tú: CRM le daría más control.\n[00:25] Cliente: Estoy bien así, no necesito cambiar.",
+      "objeciones": [
+        {
+          "tipo": "necesidad",
+          "frase": "no lo necesito"
+        },
+        {
+          "tipo": "necesidad",
+          "frase": "no necesito cambiar"
+        }
+      ],
+      "score": 30,
+      "action_items": [],
+      "word_count": 24
+    },
+    {
+      "id": "negativo_10_rechazo_molesto",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le llamo por nuestros servicios financieros.\n[00:11] Cliente: Ya le dije que no, deje de insistir.\n[00:20] Tú: Disculpe, solo quería.\n[00:28] Cliente: No gracias, bórreme de su lista.",
+      "objeciones": [
+        {
+          "tipo": "rechazo",
+          "frase": "no gracias"
+        }
+      ],
+      "score": 12,
+      "action_items": [],
+      "word_count": 23
+    },
+    {
+      "id": "negativo_11_precio_negociacion_fallida",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: El costo del paquete es diez mil pesos.\n[00:09] Cliente: Es muy caro, no puedo pagar eso.\n[00:17] Tú: Podemos financiarlo en pagos.\n[00:25] Cliente: Aun así no me convence, no gracias.",
+      "objeciones": [
+        {
+          "tipo": "precio",
+          "frase": "muy caro"
+        },
+        {
+          "tipo": "precio",
+          "frase": "no puedo pagar"
+        },
+        {
+          "tipo": "rechazo",
+          "frase": "no gracias"
+        }
+      ],
+      "score": 28,
+      "action_items": [],
+      "word_count": 26
+    },
+    {
+      "id": "negativo_12_sin_tiempo_reunion",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le pido una reunión de treinta minutos.\n[00:09] Cliente: No tengo tiempo esta semana ni la próxima.\n[00:19] Tú: Podríamos hacer una llamada breve.\n[00:27] Cliente: Tampoco tengo tiempo para eso, gracias.",
+      "objeciones": [
+        {
+          "tipo": "tiempo",
+          "frase": "no tengo tiempo"
+        }
+      ],
+      "score": 25,
+      "action_items": [],
+      "word_count": 26
+    },
+    {
+      "id": "negativo_13_autoridad_esposa_decide",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Le ofrezco un plan de inversión personal.\n[00:10] Cliente: Yo no decido eso, mi esposa maneja las finanzas.\n[00:22] Tú: Podría hablar con ella.\n[00:30] Cliente: Mejor no, no nos interesa.",
+      "objeciones": [
+        {
+          "tipo": "autoridad",
+          "frase": "yo no decido"
+        },
+        {
+          "tipo": "autoridad",
+          "frase": "mi esposa maneja"
+        },
+        {
+          "tipo": "rechazo",
+          "frase": "no nos interesa"
+        }
+      ],
+      "score": 30,
+      "action_items": [],
+      "word_count": 25
+    },
+    {
+      "id": "negativo_14_no_necesita_tiene_proveedor",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Ofrecemos telefonía empresarial.\n[00:08] Cliente: No lo necesitamos, tenemos contrato vigente.\n[00:19] Tú: Cuándo vence.\n[00:27] Cliente: No necesitamos cambiar, estamos bien.",
+      "objeciones": [
+        {
+          "tipo": "necesidad",
+          "frase": "no lo necesitamos"
+        },
+        {
+          "tipo": "necesidad",
+          "frase": "no necesitamos cambiar"
+        }
+      ],
+      "score": 32,
+      "action_items": [],
+      "word_count": 16
+    },
+    {
+      "id": "negativo_15_rechazo_cortante",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Buenos días, le llamo de.\n[00:08] Cliente: No me interesa, gracias.",
+      "objeciones": [
+        {
+          "tipo": "rechazo",
+          "frase": "no me interesa"
+        }
+      ],
+      "score": 18,
+      "action_items": [],
+      "word_count": 9
+    },
+    {
+      "id": "negativo_16_precio_cliente_enojado",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: El precio es ocho mil al mes.\n[00:08] Cliente: Eso está carísimo, qué locura.\n[00:16] Tú: Es un precio competitivo.\n[00:24] Cliente: No me convence para nada, está muy caro.",
+      "objeciones": [
+        {
+          "tipo": "precio",
+          "frase": "carísimo"
+        },
+        {
+          "tipo": "precio",
+          "frase": "está muy caro"
+        }
+      ],
+      "score": 22,
+      "action_items": [],
+      "word_count": 24
+    },
+    {
+      "id": "negativo_17_tiempo_ocupado_mes",
+      "sentimiento": "negativo",
+      "transcript": "[00:00] Tú: Quisiera agendar una cita.\n[00:08] Cliente: Este mes no tengo tiempo para nada.\n[00:16] Tú: El próximo mes le parece.\n[00:24] Cliente: Tampoco, mejor no me llame.",
+      "objeciones": [
+        {
+          "tipo": "tiempo",
+          "frase": "no tengo tiempo"
+        },
+        {
+          "tipo": "rechazo",
+          "frase": "no me llame"
+        }
+      ],
+      "score": 24,
+      "action_items": [],
+      "word_count": 21
+    },
+    {
+      "id": "neutral_01_info_request_sin_cerrar",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Le presento nuestro servicio de consultoría.\n[00:11] Cliente: Mándeme información por correo, lo reviso.\n[00:21] Tú: Con gusto, se la envío hoy.\n[00:29] Cliente: Gracias, la reviso y le aviso.",
+      "objeciones": [],
+      "score": 55,
+      "action_items": [
+        "Enviar información por correo",
+        "Dar seguimiento en 3 días"
+      ],
+      "word_count": 24
+    },
+    {
+      "id": "neutral_02_pensar_sin_rechazo",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: El plan cuesta cinco mil al mes.\n[00:08] Cliente: Déjeme pensarlo, le aviso la próxima semana.\n[00:19] Tú: Claro, quedo al pendiente.",
+      "objeciones": [
+        {
+          "tipo": "tiempo",
+          "frase": "pensarlo"
+        }
+      ],
+      "score": 50,
+      "action_items": [
+        "Dar seguimiento próxima semana"
+      ],
+      "word_count": 18
+    },
+    {
+      "id": "neutral_03_consulta_tecnica_neutra",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: El sistema maneja facturación electrónica CFDI.\n[00:11] Cliente: Qué versión de CFDI soporta.\n[00:19] Tú: La 4.0 vigente.\n[00:27] Cliente: Bien, lo evalúo con el equipo.",
+      "objeciones": [],
+      "score": 58,
+      "action_items": [
+        "Esperar evaluación del cliente"
+      ],
+      "word_count": 20
+    },
+    {
+      "id": "neutral_04_comparando_opciones",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Nuestra plataforma tiene estas características.\n[00:11] Cliente: Estoy comparando con otros dos proveedores.\n[00:21] Tú: Qué criterios son importantes para usted.\n[00:31] Cliente: Precio y soporte. Le aviso cuando decida.",
+      "objeciones": [],
+      "score": 52,
+      "action_items": [
+        "Dar seguimiento en una semana"
+      ],
+      "word_count": 24
+    },
+    {
+      "id": "neutral_05_cotizacion_pendiente",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Le mando cotización formal.\n[00:08] Cliente: Perfecto, la reviso con mi socio.\n[00:16] Tú: Cualquier duda me avisa.\n[00:24] Cliente: Sí, gracias.",
+      "objeciones": [],
+      "score": 56,
+      "action_items": [
+        "Enviar cotización",
+        "Seguimiento socio"
+      ],
+      "word_count": 16
+    },
+    {
+      "id": "neutral_06_pregunta_features",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Tenemos reportes personalizables.\n[00:08] Cliente: Puedo exportar a Excel.\n[00:16] Tú: Sí, a Excel y PDF.\n[00:24] Cliente: Bien, lo considero.",
+      "objeciones": [],
+      "score": 54,
+      "action_items": [
+        "Esperar decisión del cliente"
+      ],
+      "word_count": 15
+    },
+    {
+      "id": "neutral_07_agenda_demo_futura",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Le hago demo cuando guste.\n[00:08] Cliente: La próxima semana le confirmo fecha.\n[00:17] Tú: Perfecto.",
+      "objeciones": [],
+      "score": 55,
+      "action_items": [
+        "Confirmar demo próxima semana"
+      ],
+      "word_count": 12
+    },
+    {
+      "id": "neutral_08_interes_moderado",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: El servicio incluye soporte 24/7.\n[00:08] Cliente: Interesante, mándeme detalles.\n[00:16] Tú: Se los envío.\n[00:24] Cliente: Gracias.",
+      "objeciones": [],
+      "score": 53,
+      "action_items": [
+        "Enviar detalles del servicio"
+      ],
+      "word_count": 12
+    },
+    {
+      "id": "neutral_09_seguimiento_pendiente",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Le muestro nuestras referencias.\n[00:08] Cliente: Las reviso y le aviso.\n[00:16] Tú: Quedo al pendiente.",
+      "objeciones": [],
+      "score": 52,
+      "action_items": [
+        "Esperar feedback del cliente"
+      ],
+      "word_count": 12
+    },
+    {
+      "id": "neutral_10_consulta_precio_sin_decidir",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: El paquete estándar son tres mil pesos.\n[00:09] Cliente: Lo voy a pensar, gracias por la información.\n[00:20] Tú: Sin problema.",
+      "objeciones": [
+        {
+          "tipo": "tiempo",
+          "frase": "lo voy a pensar"
+        }
+      ],
+      "score": 50,
+      "action_items": [
+        "Seguimiento en 5 días"
+      ],
+      "word_count": 17
+    },
+    {
+      "id": "neutral_11_info_general",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Manejamos contabilidad y nóminas.\n[00:08] Cliente: Ok, me interesa saber más. Mándeme info.\n[00:18] Tú: Listo, la envío.",
+      "objeciones": [],
+      "score": 58,
+      "action_items": [
+        "Enviar información general"
+      ],
+      "word_count": 14
+    },
+    {
+      "id": "neutral_12_reunion_agendada_sin_cierre",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Le agendo reunión presencial.\n[00:08] Cliente: Bien, el jueves a las diez.\n[00:16] Tú: Confirmado.",
+      "objeciones": [],
+      "score": 60,
+      "action_items": [
+        "Preparar presentación para reunión jueves"
+      ],
+      "word_count": 11
+    },
+    {
+      "id": "neutral_13_evaluacion_interna",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: El software cuesta dos mil al mes.\n[00:08] Cliente: Lo evaluamos internamente y le avisamos.\n[00:18] Tú: Perfecto, quedo atento.",
+      "objeciones": [],
+      "score": 55,
+      "action_items": [
+        "Dar seguimiento posterior a evaluación"
+      ],
+      "word_count": 16
+    },
+    {
+      "id": "neutral_14_pregunta_soporte",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: El soporte es en español.\n[00:08] Cliente: Bien, necesito pensarlo.\n[00:16] Tú: Claro.",
+      "objeciones": [
+        {
+          "tipo": "tiempo",
+          "frase": "pensarlo"
+        }
+      ],
+      "score": 50,
+      "action_items": [
+        "Seguimiento"
+      ],
+      "word_count": 9
+    },
+    {
+      "id": "neutral_15_referido_frio",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Me dio su contacto Ana López.\n[00:08] Cliente: Ah sí, cuénteme de qué se trata.\n[00:16] Tú: Ofrecemos asesoría fiscal.\n[00:24] Cliente: Ok, mándeme propuesta por correo.",
+      "objeciones": [],
+      "score": 57,
+      "action_items": [
+        "Enviar propuesta fiscal por correo"
+      ],
+      "word_count": 21
+    },
+    {
+      "id": "neutral_16_info_comparativa",
+      "sentimiento": "neutral",
+      "transcript": "[00:00] Tú: Le mando comparativa con competencia.\n[00:09] Cliente: Perfecto, la reviso esta semana.\n[00:17] Tú: Quedo atento.",
+      "objeciones": [],
+      "score": 56,
+      "action_items": [
+        "Enviar comparativa",
+        "Seguimiento esta semana"
+      ],
+      "word_count": 12
+    }
+  ]
+}

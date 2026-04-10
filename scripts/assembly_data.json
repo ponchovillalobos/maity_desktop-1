@@ -1,9 +1,9 @@
 {
   "version": "1.0",
   "last_updated": "2026-04-08",
-  "evaluation_cycle": 9,
+  "evaluation_cycle": 10,
   "commits": 37,
-  "iterations": 30,
+  "iterations": 32,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -1548,6 +1548,30 @@
             "https://doc.rust-lang.org/error_codes/E0063.html"
           ],
           "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/6"
+        },
+        {
+          "id": "QA-FRAMEWORK-2026",
+          "title": "Framework de tests automatizados end-to-end",
+          "severity": "critical",
+          "description": "Antes cada iteracion requeria que el usuario probara manualmente. Ahora hay un framework automatizado: transcribe_cli binario Rust + tests/benchmark_transcription.py (WER/CER/speed vs ground truth) + tests/benchmark_performance.ps1 (cold start, preload time, RAM) + fixtures desde maity_recorder (4 audios reales en espanol con ground truth).",
+          "recommendation": "Correr python tests/benchmark_transcription.py --model base en cada iteracion. Registra metricas en tests/results/*.json y en memory/METRICS_HISTORY.md. Falla el build si WER > 25%.",
+          "impact": 10,
+          "effort": 5,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #32] 5 agentes paralelos entregaron: fixtures copiados, E2E strategy docs, WER harness, perf harness, transcribe_cli CLI. Primer run en curso."
+        },
+        {
+          "id": "QA-TRANSCRIBE-CLI",
+          "title": "CLI Rust para transcripcion headless",
+          "severity": "high",
+          "description": "frontend/src-tauri/src/bin/transcribe_cli.rs: binario standalone que carga WhisperEngine, transcribe un .wav, emite JSON con text + segments + speed_factor. Permite benchmarks sin lanzar GUI. Verificado funcional con audio real en espanol: 155s audio en 11.4s (13.58x realtime).",
+          "recommendation": "cargo build --bin transcribe_cli. Uso: transcribe_cli --audio file.wav --model base --language es --json",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #32] Verificado runtime con A_Poncho_Mensaje.wav"
         }
       ]
     },

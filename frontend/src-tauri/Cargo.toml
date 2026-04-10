@@ -33,6 +33,10 @@ rust-version = "1.80"
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "transcribe_cli"
+path = "src/bin/transcribe_cli.rs"
+
 
 # ============================================================================
 #  Build instructions (cargo features)

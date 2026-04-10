@@ -33,3 +33,10 @@ Histórico de métricas por iteración. Línea por commit/ciclo.
 | 2026-04-08 | 9 | LEG-001 | 77/77 ok | 0 | TBD | 0/88 (8 in-progress) | PR #9 PRIVACY_POLICY v2.0 honesto sobre Deepgram+OpenAI. CRITICAL B2B legal cerrado. |
 | 2026-04-08 | 10 | SEC-001 | 77/77 ok | 0 | TBD | 0/88 (9 in-progress) | PR #10 CORS lista blanca + MAITY_CORS_ORIGINS env override. CRITICAL XSS-from-other-sites cerrado. |
 | 2026-04-08 | 11 | SEC-002 | 77/77 ok | 0 | TBD | 0/88 (10 in-progress) | PR #11 Tauri allowlist sin fs:read-all/write-all. CRITICAL principle-of-least-privilege SOC2. |
+
+## transcription_benchmark
+
+| date | model | fixtures | WER | CER | speed | halluc | WER 95% CI |
+|------|-------|----------|-----|-----|-------|--------|------------|
+| 2026-04-08 | base | 1 | 100.00% | 100.00% | x0.00 | 0 | 0.00%-0.00% |
+| 2026-04-08 | base | 4 | 22.62% | 14.95% | x14.13 | 0 | 11.15%-29.61% |
