@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Settings, Mic, Square } from 'lucide-react';
+import { Settings, Mic, Square, User, LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getVersion } from '@tauri-apps/api/app';
 import Info from '@/components/shared/Info';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface SidebarControlsProps {
   isRecording: boolean;
@@ -19,6 +20,9 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
 }) => {
   const router = useRouter();
   const [version, setVersion] = useState('');
+  // UX-ACCOUNT-BADGE (2026-04-08): el usuario pidió saber con qué cuenta está
+  // trabajando. Mostramos nombre + email visibles justo arriba del botón grabar.
+  const { user, maityUser, signOut } = useAuth();
 
   useEffect(() => {
     getVersion().then(setVersion).catch(() => setVersion('0.2.3'));
@@ -26,8 +30,44 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
 
   if (isCollapsed) return null;
 
+  const displayName =
+    (maityUser?.first_name
+      ? `${maityUser.first_name}${maityUser.last_name ? ' ' + maityUser.last_name : ''}`
+      : null) ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split('@')[0] ||
+    'Invitado';
+  const displayEmail = maityUser?.email || user?.email || 'Sin sesión iniciada';
+  const isSignedIn = !!user;
+
   return (
     <div className="flex-shrink-0 p-2 border-t border-gray-100 dark:border-gray-700">
+      {/* Account badge */}
+      <div
+        className="w-full flex items-center gap-2 px-2 py-2 mb-2 rounded-lg bg-secondary/50 border border-border"
+        title={isSignedIn ? `Sesión activa: ${displayEmail}` : 'Sin sesión iniciada'}
+      >
+        <div className="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+          <User className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium text-foreground truncate">{displayName}</div>
+          <div className="text-[10px] text-muted-foreground truncate">{displayEmail}</div>
+        </div>
+        {isSignedIn && (
+          <button
+            onClick={() => {
+              void signOut();
+            }}
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
+            className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
       <button
         onClick={onRecordingToggle}
         disabled={isRecording}

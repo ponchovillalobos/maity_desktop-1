@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { RecordingControls } from '@/components/recording/RecordingControls';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
@@ -18,6 +18,7 @@ import { useRecordingStop } from '@/hooks/useRecordingStop';
 import { useTranscriptRecovery } from '@/hooks/useTranscriptRecovery';
 import { TranscriptRecovery } from '@/components/transcript/TranscriptRecovery';
 import { indexedDBService } from '@/services/indexedDBService';
+import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { useParakeetAutoDownloadContext } from '@/contexts/ParakeetAutoDownloadContext';
@@ -41,7 +42,15 @@ export default function Home() {
   const { status, isStopping, isProcessing, isSaving, isRecording } = recordingState;
 
   // Hooks
-  const { isModelReady: isParakeetModelReady, isDownloading: isParakeetDownloading } = useParakeetAutoDownloadContext();
+  const {
+    isModelReady: isParakeetModelReady,
+    isDownloading: isParakeetDownloading,
+    // UX-LOADING-MODEL (PERF-005): mientras el modelo se precarga al arrancar la app,
+    // deshabilitamos el botón grabar para evitar que el usuario piense que no funciona
+    // cuando hace click y no pasa nada.
+    isPreloading: isParakeetPreloading,
+    isModelLoaded: isParakeetModelLoaded,
+  } = useParakeetAutoDownloadContext();
   const { hasMicrophone } = usePermissionCheck();
   const { setIsMeetingActive, isCollapsed: sidebarCollapsed, refetchMeetings } = useSidebar();
   const { modals, messages, showModal, hideModal } = useModalState(transcriptModelConfig);
@@ -107,16 +116,95 @@ export default function Home() {
     performStartupChecks();
   }, [checkForRecoverableTranscripts, isRecording, status]);
 
-  // Watch for recoverable meetings changes and show dialog once per session
+  // UX-RECOVERY-BANNER (2026-04-08):
+  // Antes: modal bloqueante "Recuperar reuniones interrumpidas" que el usuario
+  // debía cerrar manualmente (molesto y se quedaba pegado).
+  // Ahora: auto-recuperación silenciosa en background + un toast informativo
+  // que lleva al historial con un click. Si algo falla, cae al modal legacy.
+  const autoRecoveryAttempted = useRef(false);
   useEffect(() => {
-    if (recoverableMeetings.length > 0) {
-      const shownThisSession = sessionStorage.getItem('recovery_dialog_shown');
-      if (!shownThisSession) {
-        setShowRecoveryDialog(true);
-        sessionStorage.setItem('recovery_dialog_shown', 'true');
+    if (recoverableMeetings.length === 0 || autoRecoveryAttempted.current) return;
+    autoRecoveryAttempted.current = true;
+
+    const autoRecover = async () => {
+      const total = recoverableMeetings.length;
+      console.log(`[AutoRecovery] Iniciando recuperación de ${total} reuniones interrumpidas`);
+      let recoveredCount = 0;
+      let firstMeetingId: string | undefined;
+      const failures: { meetingId: string; error: string }[] = [];
+
+      for (const meeting of recoverableMeetings) {
+        try {
+          console.log(`[AutoRecovery] Recuperando ${meeting.meetingId} (${meeting.title})`);
+          const result = await recoverMeeting(meeting.meetingId);
+          if (result.success) {
+            recoveredCount += 1;
+            if (!firstMeetingId && result.meetingId) firstMeetingId = result.meetingId;
+            console.log(`[AutoRecovery] OK ${meeting.meetingId} -> ${result.meetingId}`);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[AutoRecovery] FAIL ${meeting.meetingId}:`, msg);
+          failures.push({ meetingId: meeting.meetingId, error: msg });
+        }
       }
-    }
-  }, [recoverableMeetings]);
+
+      // UX-MINIMIZED-BUTTON: si hay algo que reportar, asegurarse de que la
+      // ventana esté visible (no minimizada). Los toasts y modales son inútiles
+      // si el usuario no ve la ventana.
+      if (recoveredCount > 0 || failures.length > 0) {
+        try {
+          await invoke('focus_main_window_cmd');
+        } catch (e) {
+          console.warn('focus_main_window_cmd failed:', e);
+        }
+      }
+
+      if (recoveredCount > 0) {
+        toast.success(
+          `${recoveredCount} ${recoveredCount === 1 ? 'conversación recuperada' : 'conversaciones recuperadas'}`,
+          {
+            description: 'Tu grabación interrumpida ya está disponible en el historial.',
+            action: firstMeetingId
+              ? {
+                  label: 'Ver en historial',
+                  onClick: () => {
+                    router.push(`/conversations?localId=${firstMeetingId}&source=local`);
+                  },
+                }
+              : {
+                  label: 'Abrir historial',
+                  onClick: () => router.push('/conversations'),
+                },
+            duration: 8000,
+          }
+        );
+        await refetchMeetings();
+        sessionStorage.removeItem('recovery_dialog_shown');
+      }
+
+      // UX-RECOVERY-BANNER v2: en lugar de abrir un modal legacy molesto,
+      // mostramos un toast.error accionable con el detalle real del fallo,
+      // para que el usuario entienda qué pasó y pueda intentar manualmente.
+      if (failures.length > 0) {
+        const firstError = failures[0].error;
+        toast.error(
+          `${failures.length} ${failures.length === 1 ? 'conversación no se pudo recuperar' : 'conversaciones no se pudieron recuperar'}`,
+          {
+            description: firstError.length > 140 ? firstError.slice(0, 140) + '…' : firstError,
+            action: {
+              label: 'Abrir recuperación manual',
+              onClick: () => setShowRecoveryDialog(true),
+            },
+            duration: 12000,
+          }
+        );
+      }
+    };
+
+    // Lanzar en background para no bloquear la UI
+    void autoRecover();
+  }, [recoverableMeetings, recoverMeeting, refetchMeetings, router]);
 
   // Handle recovery with toast notifications and navigation
   const handleRecovery = async (meetingId: string) => {
@@ -236,7 +324,18 @@ export default function Home() {
                       onTranscriptionError={(message) => {
                         showModal('errorAlert', message);
                       }}
-                      isRecordingDisabled={isRecordingDisabled || (isParakeetDownloading && !isParakeetModelReady)}
+                      isRecordingDisabled={
+                        isRecordingDisabled ||
+                        (isParakeetDownloading && !isParakeetModelReady) ||
+                        // UX-LOADING-MODEL: también bloquear mientras se precarga en memoria.
+                        // El modelo está en disco pero aún no cargado = primera grabación lenta.
+                        (isParakeetPreloading && !isParakeetModelLoaded)
+                      }
+                      loadingLabel={
+                        isParakeetPreloading && !isParakeetModelLoaded
+                          ? 'Cargando modelo…'
+                          : undefined
+                      }
                       isParentProcessing={isProcessingStop}
                       selectedDevices={selectedDevices}
                       meetingName={meetingTitle}

@@ -1,0 +1,15 @@
+{
+  "audio": "audio_b",
+  "description": "Poncho + Liz (12:00)",
+  "ground_truth_words": 1737,
+  "results": [
+    {
+      "model": "Faster-Whisper large-v3-turbo (INT8)",
+      "wer": 0.09614277489925158,
+      "segments": 161,
+      "time_sec": 34.01541447639465,
+      "rtf": 0.04713678783146348,
+      "load_time_sec": 4.559444189071655
+    }
+  ]
+}

@@ -1,14 +1,14 @@
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use futures_util::{Stream, StreamExt};
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, HostTrait};
+use futures_util::{Stream, StreamExt};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 // macOS imports
 #[cfg(target_os = "macos")]
-use futures_channel::mpsc;
-#[cfg(target_os = "macos")]
 use super::core_audio::CoreAudioCapture;
+#[cfg(target_os = "macos")]
+use futures_channel::mpsc;
 #[cfg(target_os = "macos")]
 use log::info;
 
@@ -18,7 +18,7 @@ use super::wasapi_loopback::WasapiLoopbackCapture;
 #[cfg(target_os = "windows")]
 use futures_channel::mpsc as win_mpsc;
 #[cfg(target_os = "windows")]
-use log::{info as win_info, error as win_error};
+use log::{error as win_error, info as win_info};
 
 /// System audio capture using Core Audio tap (macOS) or CPAL (other platforms)
 pub struct SystemAudioCapture {
@@ -33,7 +33,8 @@ impl SystemAudioCapture {
 
     pub fn list_system_devices() -> Result<Vec<String>> {
         let host = cpal::default_host();
-        let devices = host.output_devices()
+        let devices = host
+            .output_devices()
             .map_err(|e| anyhow::anyhow!("Failed to enumerate output devices: {}", e))?;
 
         let mut device_names = Vec::new();
@@ -110,21 +111,19 @@ impl SystemAudioCapture {
 
             // Use native WASAPI loopback for system audio capture
             // This captures audio from videocalls (Zoom, Meet, Teams) without extra software
-            let wasapi_capture = WasapiLoopbackCapture::new()
-                .map_err(|e| {
-                    win_error!("❌ Failed to initialize WASAPI loopback: {}", e);
-                    anyhow::anyhow!("WASAPI loopback not available: {}", e)
-                })?;
+            let wasapi_capture = WasapiLoopbackCapture::new().map_err(|e| {
+                win_error!("❌ Failed to initialize WASAPI loopback: {}", e);
+                anyhow::anyhow!("WASAPI loopback not available: {}", e)
+            })?;
 
             let sample_rate = wasapi_capture.sample_rate();
             win_info!("🎧 WASAPI loopback ready: {}Hz", sample_rate);
 
             // Start the capture stream
-            let wasapi_stream = wasapi_capture.start_capture()
-                .map_err(|e| {
-                    win_error!("❌ Failed to start WASAPI capture: {}", e);
-                    anyhow::anyhow!("Failed to start system audio capture: {}", e)
-                })?;
+            let wasapi_stream = wasapi_capture.start_capture().map_err(|e| {
+                win_error!("❌ Failed to start WASAPI capture: {}", e);
+                anyhow::anyhow!("Failed to start system audio capture: {}", e)
+            })?;
 
             // Forward WASAPI samples through our standard channel interface
             let (tx, rx) = win_mpsc::unbounded::<Vec<f32>>();
@@ -177,7 +176,9 @@ impl SystemAudioCapture {
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             // For Linux and other platforms, system audio capture not yet implemented
-            anyhow::bail!("System audio capture not yet implemented for this platform (Linux/other)")
+            anyhow::bail!(
+                "System audio capture not yet implemented for this platform (Linux/other)"
+            )
         }
     }
 

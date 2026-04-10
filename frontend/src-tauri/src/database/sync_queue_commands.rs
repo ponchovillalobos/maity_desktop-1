@@ -53,12 +53,10 @@ pub async fn sync_queue_claim_job<R: Runtime>(
     id: i64,
 ) -> Result<bool, String> {
     let pool = state.db_manager.pool();
-    SyncQueueRepository::claim_job(pool, id)
-        .await
-        .map_err(|e| {
-            error!("Failed to claim sync job {}: {}", id, e);
-            e.to_string()
-        })
+    SyncQueueRepository::claim_job(pool, id).await.map_err(|e| {
+        error!("Failed to claim sync job {}: {}", id, e);
+        e.to_string()
+    })
 }
 
 #[tauri::command]
@@ -104,7 +102,10 @@ pub async fn sync_queue_get_meeting_status<R: Runtime>(
     SyncQueueRepository::get_meeting_sync_status(pool, &meeting_id)
         .await
         .map_err(|e| {
-            error!("Failed to get sync status for meeting {}: {}", meeting_id, e);
+            error!(
+                "Failed to get sync status for meeting {}: {}",
+                meeting_id, e
+            );
             e.to_string()
         })
 }
@@ -178,7 +179,10 @@ pub async fn sync_queue_cancel_meeting<R: Runtime>(
     SyncQueueRepository::cancel_jobs_for_meeting(pool, &meeting_id)
         .await
         .map_err(|e| {
-            error!("Failed to cancel sync jobs for meeting {}: {}", meeting_id, e);
+            error!(
+                "Failed to cancel sync jobs for meeting {}: {}",
+                meeting_id, e
+            );
             e.to_string()
         })
 }
@@ -193,7 +197,10 @@ pub async fn sync_queue_get_finalize_result<R: Runtime>(
     SyncQueueRepository::get_completed_finalize_result(pool, &meeting_id)
         .await
         .map_err(|e| {
-            error!("Failed to get finalize result for meeting {}: {}", meeting_id, e);
+            error!(
+                "Failed to get finalize result for meeting {}: {}",
+                meeting_id, e
+            );
             e.to_string()
         })
 }

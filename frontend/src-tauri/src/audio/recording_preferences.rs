@@ -39,40 +39,39 @@ impl Default for RecordingPreferences {
     }
 }
 
-/// Get the default recordings folder based on platform
+/// Get the default recordings folder based on platform.
+///
+/// Rebrand Meetily → Maity (2026-04-08): si una instalación previa tiene
+/// `meetily-recordings` con datos, se mantiene para no perder grabaciones
+/// históricas. Nuevos instalaciones usan `maity-recordings`.
 pub fn get_default_recordings_folder() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        // Windows: %USERPROFILE%\Music\meetily-recordings
-        if let Some(music_dir) = dirs::audio_dir() {
-            music_dir.join("meetily-recordings")
-        } else {
-            // Fallback to Documents if Music folder is not available
-            dirs::document_dir()
+    let parent: PathBuf = {
+        #[cfg(target_os = "windows")]
+        {
+            dirs::audio_dir()
+                .or_else(dirs::document_dir)
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("meetily-recordings")
         }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        // macOS: ~/Movies/meetily-recordings
-        if let Some(movies_dir) = dirs::video_dir() {
-            movies_dir.join("meetily-recordings")
-        } else {
-            // Fallback to Documents if Movies folder is not available
-            dirs::document_dir()
+        #[cfg(target_os = "macos")]
+        {
+            dirs::video_dir()
+                .or_else(dirs::document_dir)
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("meetily-recordings")
         }
-    }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            dirs::document_dir().unwrap_or_else(|| PathBuf::from("."))
+        }
+    };
 
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    {
-        // Linux/Others: ~/Documents/meetily-recordings
-        dirs::document_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("meetily-recordings")
+    let legacy = parent.join("meetily-recordings");
+    let modern = parent.join("maity-recordings");
+
+    // Si existe el folder legado y NO existe el nuevo, usar el legado (compat).
+    if legacy.exists() && !modern.exists() {
+        legacy
+    } else {
+        modern
     }
 }
 
@@ -108,7 +107,7 @@ pub async fn load_recording_preferences<R: Runtime>(
     // Try to get the preferences from store
     let prefs = if let Some(value) = store.get("preferences") {
         match serde_json::from_value::<RecordingPreferences>(value.clone()) {
-            #[allow(unused_mut)]  // mut needed on macOS for system_audio_backend update
+            #[allow(unused_mut)] // mut needed on macOS for system_audio_backend update
             Ok(mut p) => {
                 info!("Loaded recording preferences from store");
                 // Update macOS backend to current value if needed
@@ -385,4 +384,3 @@ pub async fn get_audio_backend_info() -> Result<Vec<BackendInfo>, String> {
         }])
     }
 }
-
