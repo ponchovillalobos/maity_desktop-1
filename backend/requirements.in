@@ -1,0 +1,20 @@
+# PY-006: fuente canónica de dependencias directas del backend Maity.
+# Genera requirements.txt con hashes via:
+#   pip-compile --generate-hashes -o requirements.txt requirements.in
+#
+# Actualizar una dep: editar aquí y re-correr pip-compile.
+
+pydantic-ai==0.2.15
+pydantic==2.11.5
+pandas==2.2.3
+devtools==0.12.2
+python-dotenv==1.1.0
+fastapi==0.115.9
+uvicorn==0.34.0
+python-multipart==0.0.20
+aiosqlite==0.21.0
+ollama==0.5.2
+
+# Transcription benchmark harness (tests/benchmark_transcription.py)
+jiwer>=3.0.4
+num2words>=0.5.13

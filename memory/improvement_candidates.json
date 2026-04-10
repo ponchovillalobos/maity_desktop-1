@@ -1,0 +1,45 @@
+[
+  {
+    "rank": 1,
+    "exp_id": "STT-002",
+    "expert": "transcription",
+    "title": "Sin fallback automático offline cuando Deepgram falla",
+    "files": [
+      "frontend/src-tauri/src/audio/transcription/engine.rs",
+      "frontend/src-tauri/src/audio/transcription/worker.rs"
+    ],
+    "issue": "engine.rs no implementa FallbackChain. Si el JWT del proxy Cloudflare expira o la red cae, el provider Deepgram falla definitivamente y toda la transcripción de la reunión se pierde desde ese punto en adelante. No hay conmutación automática a Whisper/Parakeet local.",
+    "fix": "En engine.rs, envolver la llamada al provider primario en lógica de fallback: si DeepgramRealtimeTranscriber devuelve ConnectionFailed N veces consecutivas, instanciar el provider local disponible (Parakeet si el modelo está precargado, WhisperEngine como último recurso) y retomar transcripción. Emitir evento 'transcription-fallback' al frontend para avisar al usuario.",
+    "impact": 10,
+    "effort": 7,
+    "priority": 1.43
+  },
+  {
+    "rank": 2,
+    "exp_id": "LLM-004",
+    "expert": "ai_llm",
+    "title": "Prompt del LLM en inglés para reuniones en español",
+    "files": [
+      "backend/app/transcript_processor.py"
+    ],
+    "issue": "El system prompt en transcript_processor.py está íntegramente en inglés ('Given the following meeting transcript chunk…'). Las reuniones son en español es-419. Esto degrada la extracción de Action Items, nombres propios y terminología técnica porque el modelo recibe instrucciones en un idioma distinto al contenido.",
+    "fix": "Crear backend/app/prompts/ con plantillas por idioma (es.txt, en.txt). Detectar idioma del transcript (langdetect o usar el setting del usuario ya disponible en DB). Cargar la plantilla correspondiente al inicio de process_transcript. Esfuerzo bajo: solo Python, sin cambios Rust, sin riesgo de romper tests existentes.",
+    "impact": 7,
+    "effort": 3,
+    "priority": 2.33
+  },
+  {
+    "rank": 3,
+    "exp_id": "SEC-003",
+    "expert": "security",
+    "title": "CSP con 'unsafe-eval' en script-src",
+    "files": [
+      "frontend/src-tauri/tauri.conf.json"
+    ],
+    "issue": "tauri.conf.json fija script-src 'self' 'unsafe-eval'. unsafe-eval permite new Function/eval() en el webview, convirtiendo cualquier inyección DOM (XSS en BlockNote, contenido pegado, markdown malicioso) en ejecución de código con acceso completo al IPC Tauri y al sistema de archivos.",
+    "fix": "Eliminar 'unsafe-eval' de script-src. Auditar qué dependencia lo requiere (BlockNote es candidato principal por su DSL interno). Si no se puede eliminar de forma limpia en esta iteración, al menos documentar en tauri.conf.json qué paquete lo requiere y abrir issue de seguimiento. Verificar con cargo check + npm run build.",
+    "impact": 8,
+    "effort": 5,
+    "priority": 1.60
+  }
+]

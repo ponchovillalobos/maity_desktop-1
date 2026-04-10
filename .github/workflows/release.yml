@@ -23,47 +23,37 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all tags
 
-      - name: Get version from tauri.conf.json and check for existing tags
+      - name: Get version from tauri.conf.json and enforce SemVer
         id: get-version
         shell: bash
         run: |
-          BASE_VERSION=$(grep -o '"version": "[^"]*"' frontend/src-tauri/tauri.conf.json | cut -d'"' -f4)
-          echo "Base version from tauri.conf.json: $BASE_VERSION"
+          # OPS-002: Enforce strict SemVer (MAJOR.MINOR.PATCH, optionally -prerelease+build).
+          # Prohibido inventar un 4to segmento X.Y.Z.N: no es válido y rompe
+          # compatibilidad con cargo, npm semver, updaters, etc.
+          VERSION=$(grep -o '"version": "[^"]*"' frontend/src-tauri/tauri.conf.json | cut -d'"' -f4)
+          echo "Version from tauri.conf.json: $VERSION"
+
+          # Validar formato SemVer (permite -prerelease y +build opcionales)
+          SEMVER_REGEX='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [[ ! "$VERSION" =~ $SEMVER_REGEX ]]; then
+            echo "::error::OPS-002: La versión '$VERSION' en tauri.conf.json no cumple SemVer (MAJOR.MINOR.PATCH)."
+            echo "::error::Actualiza frontend/src-tauri/tauri.conf.json con una versión válida antes de releasear."
+            exit 1
+          fi
 
           # Fetch all tags
           git fetch --tags
 
-          # Check if base version tag exists
-          if git tag -l "v${BASE_VERSION}" | grep -q .; then
-            echo "Tag v${BASE_VERSION} already exists, looking for minor updates..."
-
-            # Find all existing minor versions (e.g., 0.1.1.1, 0.1.1.2, etc.)
-            LATEST_MINOR=0
-            for i in $(seq 1 100); do
-              if git tag -l "v${BASE_VERSION}.${i}" | grep -q .; then
-                LATEST_MINOR=$i
-              else
-                break
-              fi
-            done
-
-            # Increment to next minor version
-            NEXT_MINOR=$((LATEST_MINOR + 1))
-
-            if [ $NEXT_MINOR -gt 100 ]; then
-              echo "ERROR: Maximum minor version (100) reached for ${BASE_VERSION}"
-              echo "Please update the version in tauri.conf.json"
-              exit 1
-            fi
-
-            VERSION="${BASE_VERSION}.${NEXT_MINOR}"
-            echo "Using minor update version: $VERSION"
-          else
-            VERSION="${BASE_VERSION}"
-            echo "Using base version: $VERSION"
+          # OPS-002: Si el tag ya existe, FAIL FAST con mensaje accionable.
+          # Ya no inventamos X.Y.Z.N automáticamente. El dev debe bumpear
+          # la versión explícitamente en tauri.conf.json (patch/minor/major).
+          if git tag -l "v${VERSION}" | grep -q .; then
+            echo "::error::OPS-002: El tag v${VERSION} ya existe. No se permite reusar versiones."
+            echo "::error::Bumpea MAJOR.MINOR.PATCH en frontend/src-tauri/tauri.conf.json, frontend/src-tauri/Cargo.toml y frontend/package.json antes de releasear (usa /build patch|minor|major)."
+            exit 1
           fi
 
-          echo "Final version: $VERSION"
+          echo "Final SemVer version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create Draft Release

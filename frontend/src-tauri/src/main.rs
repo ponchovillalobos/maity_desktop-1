@@ -19,17 +19,24 @@ fn init_sentry() -> Option<sentry::ClientInitGuard> {
 
     tracing::info!("Initializing Sentry crash reporting...");
 
-    let guard = sentry::init((dsn, sentry::ClientOptions {
-        release: Some(std::borrow::Cow::Borrowed(env!("CARGO_PKG_VERSION"))),
-        environment: Some(std::borrow::Cow::Borrowed(if cfg!(debug_assertions) { "development" } else { "production" })),
-        // Sample rate for error events (1.0 = 100%)
-        sample_rate: 1.0,
-        // Attach stacktraces to all messages
-        attach_stacktrace: true,
-        // Send default PII (careful with privacy)
-        send_default_pii: false,
-        ..Default::default()
-    }));
+    let guard = sentry::init((
+        dsn,
+        sentry::ClientOptions {
+            release: Some(std::borrow::Cow::Borrowed(env!("CARGO_PKG_VERSION"))),
+            environment: Some(std::borrow::Cow::Borrowed(if cfg!(debug_assertions) {
+                "development"
+            } else {
+                "production"
+            })),
+            // Sample rate for error events (1.0 = 100%)
+            sample_rate: 1.0,
+            // Attach stacktraces to all messages
+            attach_stacktrace: true,
+            // Send default PII (careful with privacy)
+            send_default_pii: false,
+            ..Default::default()
+        },
+    ));
 
     tracing::info!("Sentry initialized successfully");
     Some(guard)
@@ -41,7 +48,8 @@ fn setup_panic_hook() {
 
     panic::set_hook(Box::new(move |panic_info| {
         // Log the panic
-        let location = panic_info.location()
+        let location = panic_info
+            .location()
             .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
             .unwrap_or_else(|| "unknown location".to_string());
 
@@ -58,7 +66,7 @@ fn setup_panic_hook() {
         // Report to Sentry if configured
         sentry::capture_message(
             &format!("PANIC at {}: {}", location, message),
-            sentry::Level::Fatal
+            sentry::Level::Fatal,
         );
 
         // Flush Sentry events before crashing
@@ -76,7 +84,10 @@ fn main() {
     // Initialize file logging with rotation (writes to both console and file)
     if let Err(e) = app_lib::logging::init_file_logging("Maity") {
         // Fallback to basic console output if file logging fails
-        eprintln!("Warning: Failed to initialize file logging: {}. Using console only.", e);
+        eprintln!(
+            "Warning: Failed to initialize file logging: {}. Using console only.",
+            e
+        );
         // Initialize basic tracing for console
         tracing_subscriber::fmt::init();
     }

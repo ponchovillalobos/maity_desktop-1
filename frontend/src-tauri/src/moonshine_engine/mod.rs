@@ -16,10 +16,12 @@
 //! - `model`: ONNX model wrapper and inference logic
 //! - `commands`: Tauri command interface for frontend integration
 
-pub mod moonshine_engine;
-pub mod model;
 pub mod commands;
+pub mod model;
+pub mod moonshine_engine;
 
-pub use moonshine_engine::{MoonshineEngine, MoonshineEngineError, ModelInfo, ModelStatus, DownloadProgress};
-pub use model::{MoonshineModel, MoonshineError};
 pub use commands::*;
+pub use model::{MoonshineError, MoonshineModel};
+pub use moonshine_engine::{
+    DownloadProgress, ModelInfo, ModelStatus, MoonshineEngine, MoonshineEngineError,
+};

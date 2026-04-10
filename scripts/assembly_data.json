@@ -1,0 +1,1874 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-04-08",
+  "evaluation_cycle": 10,
+  "commits": 59,
+  "iterations": 44,
+  "project": {
+    "name": "Maity Desktop",
+    "version": "0.2.31",
+    "market": "Asistente de reuniones IA para profesionales hispanohablantes (Windows desktop, próximamente macOS)",
+    "target_market_size": "$1.5 billion (meeting AI tools), 22% CAGR",
+    "unique_value": "Captura dual mic+sistema, transcripción Deepgram/Whisper en vivo, resúmenes ChatGPT/local LLM con foco en privacidad y mercado hispano"
+  },
+  "experts": {
+    "security": {
+      "name": "Seguridad",
+      "icon": "🔒",
+      "color": "#e74c3c",
+      "summary": "Allowlist FS demasiado abierta, CORS totalmente permisivo en backend y CSP con 'unsafe-eval'. Riesgo alto de exfiltración de transcripciones y abuso del IPC.",
+      "findings": [
+        {
+          "id": "SEC-001",
+          "title": "CORS abierto a todos los orígenes en FastAPI",
+          "severity": "critical",
+          "description": "backend/app/main.py:46 declara allow_origins=[\"*\"] junto con allow_credentials=True, allow_methods=[\"*\"] y allow_headers=[\"*\"]. Esta combinación es rechazada por la spec CORS y, peor aún, expone toda la API de transcripciones/resúmenes a cualquier sitio web que el usuario visite mientras corre el backend local en el puerto 5167.",
+          "recommendation": "Restringir allow_origins a [\"tauri://localhost\", \"http://localhost:3118\", \"https://tauri.localhost\"]. Eliminar credentials si no se usan cookies. Documentar la lista de orígenes permitidos en config.py.",
+          "impact": 9,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#credentialed_requests_and_wildcards"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/12"
+        },
+        {
+          "id": "SEC-002",
+          "title": "Permisos fs:read-all y fs:write-all habilitados",
+          "severity": "critical",
+          "description": "frontend/src-tauri/tauri.conf.json:51-55 concede fs:read-all, fs:write-all, fs:default además de fs:scope $APPDATA/*. Cualquier vulnerabilidad XSS en el webview (BlockNote, react-markdown, contenido pegado) podría leer/escribir archivos arbitrarios del usuario.",
+          "recommendation": "Eliminar fs:read-all y fs:write-all. Mantener únicamente fs:allow-app-read/write y un fs:scope acotado a $APPDATA/com.maity.ai/** y $APPDATA/Maity/**. Validar cada path en comandos Rust antes de tocar disco.",
+          "impact": 10,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://v2.tauri.app/security/capabilities/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/11"
+        },
+        {
+          "id": "SEC-003",
+          "title": "CSP con 'unsafe-eval' en script-src",
+          "severity": "high",
+          "description": "tauri.conf.json:29 fija script-src 'self' 'unsafe-eval'. unsafe-eval permite new Function/eval, lo que convierte cualquier inyección DOM en RCE dentro del webview con acceso a IPC Tauri.",
+          "recommendation": "Eliminar 'unsafe-eval'. Si una dependencia (BlockNote, Remirror, Recharts) lo requiere, identificarla y considerar reemplazo o build con WASM precompilado. Usar nonces para scripts inline.",
+          "impact": 8,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src"
+          ]
+        },
+        {
+          "id": "SEC-004",
+          "title": "Audio y base SQLite sin cifrado en disco",
+          "severity": "high",
+          "description": "El crate usa sqlx con sqlite y los chunks WAV/transcript se guardan en $APPDATA. No hay SQLCipher ni cifrado de WAVs. Una grabación de reunión confidencial queda en claro accesible para cualquier proceso del usuario o para backup en la nube.",
+          "recommendation": "Migrar a sqlcipher (sqlx feature sqlite-sqlcipher) con clave derivada del keyring del sistema (plugin tauri-plugin-stronghold o keyring-rs). Para WAVs, cifrar con AES-GCM usando una clave por sesión y borrarlos al finalizar el procesado.",
+          "impact": 9,
+          "effort": 8,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://www.zetetic.net/sqlcipher/"
+          ]
+        },
+        {
+          "id": "SEC-005",
+          "title": "API key de Deepgram potencialmente persistida en store",
+          "severity": "high",
+          "description": "El plugin tauri-plugin-store guarda preferences en JSON sin cifrado. Combinado con fs:read-all (SEC-002), la API key de Deepgram/OpenAI termina recuperable desde cualquier script malicioso.",
+          "recommendation": "Mover claves a tauri-plugin-stronghold o al keyring del SO (Credential Manager Windows, Keychain macOS, Secret Service Linux). Nunca devolverlas al frontend; firmar peticiones desde Rust.",
+          "impact": 8,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://v2.tauri.app/plugin/stronghold/"
+          ]
+        },
+        {
+          "id": "SEC-006",
+          "title": "Whisper server escucha en 0.0.0.0",
+          "severity": "medium",
+          "description": "backend/Dockerfile.server-cpu:85 fija WHISPER_HOST=0.0.0.0 y EXPOSE 8178. En equipos con la red en perfil Público, cualquiera en la LAN puede mandar audio al servidor de Whisper sin autenticación.",
+          "recommendation": "Por defecto bind a 127.0.0.1; documentar override explícito si el usuario quiere acceso LAN. Añadir token bearer simple en entrypoint.sh o requerir reverse proxy.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://owasp.org/www-project-top-ten/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/33"
+        },
+        {
+          "id": "SEC-007",
+          "title": "Updater apunta a un repositorio personal sin verificación adicional",
+          "severity": "medium",
+          "description": "tauri.conf.json:128 configura el updater contra https://github.com/Sixale730/maity_desktop/releases con una pubkey embebida. Si la cuenta GitHub se ve comprometida, la pubkey minisign sigue siendo válida pero no hay rotación ni canal de revocación.",
+          "recommendation": "Documentar política de rotación de la pubkey, usar GitHub Environments con review obligatoria para releases, y considerar mirror/CDN propio. Añadir verificación de versión mínima firmada (downgrade-protection).",
+          "impact": 6,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://v2.tauri.app/plugin/updater/"
+          ]
+        },
+        {
+          "id": "SEC-008",
+          "title": "Sin SSO/SAML/OIDC para auth empresarial",
+          "severity": "critical",
+          "description": "Maity solo soporta API keys BYOK individuales. Para venta B2B, los clientes enterprise requieren SSO via SAML 2.0 o OIDC (Okta, Azure AD, Google Workspace). Sin esto, la app no pasa el security questionnaire de cualquier empresa Fortune 500.",
+          "recommendation": "Integrar tauri-plugin-oauth o redirect a SSO via deep-link maity://. Soportar al menos: Azure AD, Okta, Google Workspace, Auth0. Mapear claims SAML/OIDC a roles internos (ver SEC-009).",
+          "impact": 10,
+          "effort": 8,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://www.okta.com/identity-101/sso/"
+          ]
+        },
+        {
+          "id": "SEC-009",
+          "title": "Sin RBAC ni audit logs persistentes",
+          "severity": "high",
+          "description": "No hay roles ni control de acceso. Cualquier usuario que abre la app puede hacer todo. Para B2B se necesitan roles (admin, manager, member, viewer) y audit logs (quien grabo, cuando, que reuniones leyo, exports). Sin esto no hay forma de cumplir SOC 2 CC6 (Logical Access).",
+          "recommendation": "Tabla audit_log en SQLite con (timestamp, user_id, action, resource_id, ip_address, success). Tabla roles con permisos. Middleware en cada comando Tauri para verificar permisos. Export de logs en CSV/JSON.",
+          "impact": 9,
+          "effort": 7,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2"
+          ]
+        },
+        {
+          "id": "SEC-010",
+          "title": "Sin opcion de data residency / on-premise",
+          "severity": "high",
+          "description": "Clientes en EU, sectores regulados (salud, finanzas, gobierno) requieren que los datos no salgan de su jurisdiccion. Maity actualmente no ofrece on-premise self-hosted, ni region EU para Deepgram/OpenAI, ni air-gapped mode formal.",
+          "recommendation": "1) Documentar el modo Local 100% como on-premise explicito en docs/B2B_DEPLOYMENT.md. 2) Soportar Deepgram self-hosted (su edicion enterprise). 3) Soportar Anthropic Claude via Bedrock (region EU). 4) Modo air-gapped: detectar ausencia de red y bloquear features cloud automaticamente.",
+          "impact": 8,
+          "effort": 7,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://www.deepgram.com/learn/self-hosted-speech-recognition"
+          ]
+        }
+      ]
+    },
+    "rust_tauri": {
+      "name": "Rust / Tauri",
+      "icon": "🦀",
+      "color": "#dea584",
+      "summary": "126 unwrap() repartidos en 23 archivos (audio, whisper, parakeet) con riesgo de panic en runtime; allowlist y CSP afectan también la robustez del shell.",
+      "findings": [
+        {
+          "id": "RUST-001",
+          "title": "126 .unwrap() en código de producción",
+          "severity": "critical",
+          "description": "grep en frontend/src-tauri/src cuenta 126 unwrap() en 23 archivos. Concentraciones críticas en analytics/commands.rs (25), moonshine_engine/commands.rs (19), parakeet_engine/commands.rs (19), whisper_engine/commands.rs (15), audio/incremental_saver.rs (10). Un unwrap en un comando IPC propaga panic al runtime de Tauri y mata la app durante una grabación.",
+          "recommendation": "Reemplazar unwrap() por ? + Result<_, TranscriptionError> o anyhow::Result. Establecer regla clippy::unwrap_used a deny en lib.rs y arreglar incrementalmente empezando por comandos IPC y código de audio en hot path.",
+          "impact": 9,
+          "effort": 8,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_used"
+          ]
+        },
+        {
+          "id": "RUST-002",
+          "title": "Falta std::panic::set_hook con reporte a Sentry",
+          "severity": "high",
+          "description": "Cargo.toml ya incluye sentry 0.34 con feature panic, pero combinado con los 126 unwrap() es esencial garantizar que cada panic en threads de audio (cpal, tokio tasks) llegue a Sentry. No hay evidencia de catch_unwind alrededor de los workers de transcripción.",
+          "recommendation": "Inicializar sentry::init con before_send en lib.rs antes de tauri::Builder, instalar panic hook que llame a sentry::integrations::panic::panic_handler, y envolver cada spawn de tarea de audio en .catch_unwind().",
+          "impact": 7,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "https://docs.sentry.io/platforms/rust/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/25"
+        },
+        {
+          "id": "RUST-003",
+          "title": "Dependencias git sin pinning estricto",
+          "severity": "medium",
+          "description": "Cargo.toml incluye silero_rs (rev 26a6460), ffmpeg-sidecar (branch main) y patch.crates-io para cpal (rev) y esaxx-rs (branch). Builds reproducibles imposibles si las branches cambian; supply-chain risk.",
+          "recommendation": "Fijar todas las dependencias git a un rev=. Para ffmpeg-sidecar branch=main es peligroso, cambiar a tag o rev. Habilitar cargo deny en CI y un cargo vendor en releases.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://embarkstudios.github.io/cargo-deny/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/16"
+        },
+        {
+          "id": "RUST-004",
+          "title": "reqwest 0.11 obsoleto con OpenSSL nativo",
+          "severity": "medium",
+          "description": "Cargo.toml usa reqwest 0.11 (línea estable más reciente es 0.12). Sin feature rustls explícita probablemente compila contra native-tls/OpenSSL en Linux, exponiendo vulnerabilidades del sistema.",
+          "recommendation": "Actualizar a reqwest 0.12 con default-features=false y features [\"rustls-tls\",\"json\",\"stream\",\"multipart\"]. Verificar compatibilidad con tokio-tungstenite 0.21.",
+          "impact": 5,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://github.com/seanmonstar/reqwest/releases"
+          ]
+        },
+        {
+          "id": "RUST-005",
+          "title": "Mutex<WsStream> de Deepgram puede bloquear el reactor",
+          "severity": "medium",
+          "description": "audio/transcription/deepgram_provider.rs usa tokio::sync::Mutex sobre el WebSocket completo. Mantener el lock mientras se hace SinkExt::send con backpressure puede serializar todo el envío de audio. Bajo congestión, frames de audio se acumulan y la latencia explota.",
+          "recommendation": "Usar SplitSink + canal mpsc(buffer) para enviar; un único task consumidor del receiver hace .send sobre el sink sin Mutex.",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://docs.rs/futures/latest/futures/stream/struct.SplitSink.html"
+          ]
+        },
+        {
+          "id": "RUST-006",
+          "title": "Capability main asigna permisos sin separar por ventana",
+          "severity": "medium",
+          "description": "tauri.conf.json define una sola capability main con todos los permisos (fs, store, updater, notification, deep-link, process). Si en futuro se añade una ventana de configuración o updater dialog, hereda todo. Viola principio de menor privilegio.",
+          "recommendation": "Dividir en capabilities separadas: recording (fs scope, audio), settings (store, notification), updater (updater, process). Asignar windows distintos.",
+          "impact": 5,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://v2.tauri.app/security/capabilities/"
+          ]
+        },
+        {
+          "id": "RUST-007",
+          "title": "Doble sistema de logging: tracing-subscriber + env_logger",
+          "severity": "low",
+          "description": "Cargo.toml habilita tracing-subscriber con env-filter y json, pero también env_logger 0.11. Difícil controlar nivel y posible duplicación en archivo.",
+          "recommendation": "Eliminar env_logger y log facade, unificar todo bajo tracing. Configurar EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new(\"info,app_lib=debug\")).",
+          "impact": 3,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "pending",
+          "references": [
+            "https://docs.rs/tracing-subscriber/"
+          ]
+        },
+        {
+          "id": "RUST-008",
+          "title": "test_calculate_buffer_timeout_bluetooth falla por precisión float (mul_f32)",
+          "severity": "high",
+          "description": "calculate_buffer_timeout en device_detection.rs usaba mul_f32(2.0) sobre Duration::from_secs_f64(3840/48000). Cast intermedio f64→f32 introducía error: 0.08s × 2 esperaba 160ms exactos pero salía 159.999996ms.",
+          "recommendation": "Reemplazar mul_f32(2.0) por Duration * 2 (Mul<u32> entero exacto). 77/77 tests pasando CPU-only.",
+          "impact": 7,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/ponchovillalobos/maity_desktop-1/pull/8"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/8"
+        },
+        {
+          "id": "RUST-009",
+          "title": "test_checkpoint_creation: bug del TEST (stereo 48k samples), no de producción",
+          "severity": "high",
+          "description": "Bug del test, NO de producción. El test usaba data: vec![0.5f32; 24000] pensando 0.5s @ 48kHz mono, pero el saver estaba inicializado con channels=2 stereo. En producción pipeline.rs:1150-1152 emite chunks stereo interleaved donde 0.5s @ 48kHz stereo = 48000 samples. 120 * 24000 = 2,880,000 = 1 checkpoint en vez de 2. La logica del IncrementalAudioSaver es correcta; la promesa de zero data loss NO esta comprometida. Era el test midiendo mal.",
+          "recommendation": "Cambiar data: vec![0.5f32; 24000] por vec![0.5f32; 48000] (stereo interleaved). Actualizar comentario del test. Device type Mixed (consistente con pipeline). VALIDADO cargo test rc=0 en CPU-only.",
+          "impact": 9,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/ponchovillalobos/maity_desktop-1/pull/6",
+            "frontend/src-tauri/src/audio/incremental_saver.rs",
+            "frontend/src-tauri/src/audio/pipeline.rs:1150"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/6"
+        },
+        {
+          "id": "LLM-008",
+          "title": "test_get_builtin_template falla por mismatch i18n (Standup Diario vs Daily Standup)",
+          "severity": "medium",
+          "description": "Test assertion esperaba 'Daily Standup' pero el template built-in tiene name='Standup Diario' (es-419-first). Validado con cargo test CPU-only rc=0.",
+          "recommendation": "Cambiar assertion a 'Standup Diario' con comentario sobre la política es-419-first.",
+          "impact": 5,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/ponchovillalobos/maity_desktop-1/pull/7"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/7"
+        },
+        {
+          "id": "RUST-010",
+          "title": "cargo fmt --all -- --check falla con múltiples archivos sin formatear",
+          "severity": "medium",
+          "description": "Baseline run de quality gates mostró cargo fmt --all -- --check rc=1 con inconsistencias de estilo en múltiples archivos del workspace Rust. Bloquea el primer quality gate del workflow /improve-pr y añade ruido de estilo a cada diff.",
+          "recommendation": "cargo fmt --all sobre workspace completo (frontend/src-tauri + llama-helper). Corregir manualmente trailing whitespace en archivos que rustfmt no puede tocar (bug interno con literales largos en match arms).",
+          "impact": 3,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/ponchovillalobos/maity_desktop-1/pull/5"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/5"
+        },
+        {
+          "id": "RUST-011",
+          "title": "Cargo.toml con duplicados, sin organizar y deps git sin pinning estricto",
+          "severity": "medium",
+          "description": "Cargo.toml tenia 6 dependencias declaradas dos o tres veces (which, once_cell, anyhow, reqwest, tauri, futures-channel) sin organizacion clara, esaxx-rs estaba con branch=feat/dynamic-msvc-link (supply-chain risk), metadata del paquete con datos de Meetily/Sujith en lugar de Maity, y rust-version=1.77 obsoleto.",
+          "recommendation": "Refactor completo: eliminar duplicados, organizar en 13 categorias con encabezados ASCII, pinear esaxx-rs a rev exacto, actualizar metadata a Maity, bump rust-version a 1.80, agregar comentario inicial con changelog, crear docs/CARGO_DEPENDENCIES.md y docs/PROJECT_STATUS.md como referencia. Validado con cargo test --lib 77/77 verde.",
+          "impact": 5,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/ponchovillalobos/maity_desktop-1/pull/18",
+            "docs/CARGO_DEPENDENCIES.md",
+            "docs/PROJECT_STATUS.md"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/18"
+        }
+      ]
+    },
+    "python_backend": {
+      "name": "Python Backend",
+      "icon": "🐍",
+      "color": "#3776ab",
+      "summary": "FastAPI con CORS abierto, sin validación pydantic explícita en main, requirements escasos pero pinned, y uso de @app.on_event deprecado.",
+      "findings": [
+        {
+          "id": "PY-001",
+          "title": "@app.on_event(\"shutdown\") deprecado en FastAPI 0.115",
+          "severity": "medium",
+          "description": "backend/app/main.py:124 usa @app.on_event(\"shutdown\"). Desde Starlette 0.27 este decorador está deprecado a favor de lifespan context managers.",
+          "recommendation": "Migrar a lifespan: definir @asynccontextmanager async def lifespan(app), instanciar SummaryProcessor en startup y llamar processor.cleanup() en finally. Pasar lifespan=lifespan al constructor FastAPI.",
+          "impact": 4,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://fastapi.tiangolo.com/advanced/events/#lifespan"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/12"
+        },
+        {
+          "id": "PY-002",
+          "title": "SummaryProcessor instanciado en import time",
+          "severity": "high",
+          "description": "main.py:115 ejecuta processor = SummaryProcessor() a nivel módulo. Si TranscriptProcessor lanza, el import falla y uvicorn no arranca, dejando al usuario sin backend ni mensaje claro.",
+          "recommendation": "Mover la inicialización a lifespan startup con try/except que loguee y continúe en modo degradado, exponiendo /health con status='degraded'.",
+          "impact": 7,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://fastapi.tiangolo.com/advanced/events/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/12"
+        },
+        {
+          "id": "PY-003",
+          "title": "uvicorn con reload=True y host=0.0.0.0 hardcodeado",
+          "severity": "high",
+          "description": "main.py:137 llama uvicorn.run(\"main:app\", host=\"0.0.0.0\", port=5167, reload=True). reload=True nunca debe activarse en producción. 0.0.0.0 expone el backend a la LAN.",
+          "recommendation": "Leer host, port y reload de variables de entorno: host=os.getenv(\"MAITY_HOST\",\"127.0.0.1\"), reload=os.getenv(\"MAITY_RELOAD\",\"0\")==\"1\".",
+          "impact": 8,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://www.uvicorn.org/deployment/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/12"
+        },
+        {
+          "id": "PY-004",
+          "title": "Logger configurado a nivel módulo en lugar de root",
+          "severity": "low",
+          "description": "main.py:15-31 configura logger con DEBUG y un handler propio. Los demás módulos tendrán su propio logger no configurado y por defecto a WARNING, perdiendo logs.",
+          "recommendation": "Centralizar configuración con logging.basicConfig o dictConfig en main.py antes de imports de submódulos. Considerar structlog para output JSON consistente.",
+          "impact": 3,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://docs.python.org/3/howto/logging.html"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/12"
+        },
+        {
+          "id": "PY-005",
+          "title": "Falta validación Pydantic en process_transcript",
+          "severity": "medium",
+          "description": "SummaryProcessor.process_transcript recibe text, model, model_name, chunk_size, overlap, custom_prompt como parámetros sueltos y valida con if/raise ValueError.",
+          "recommendation": "Definir TranscriptProcessRequest(BaseModel) con field validators (chunk_size>0, overlap>=0, model in Literal[...]). Usar como dependencia de la ruta.",
+          "impact": 5,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://docs.pydantic.dev/latest/concepts/validators/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/12"
+        },
+        {
+          "id": "PY-006",
+          "title": "requirements.txt sin hashes ni dependencias transitivas pinned",
+          "severity": "medium",
+          "description": "backend/requirements.txt tiene solo 10 paquetes top-level. No hay pip-compile output con hashes, lo que permite supply chain attacks vía dependencias transitivas.",
+          "recommendation": "Adoptar uv o pip-tools: mantener requirements.in con top-level y generar requirements.txt con --generate-hashes. Activar dependabot/renovate.",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/jazzband/pip-tools"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/30"
+        },
+        {
+          "id": "PY-007",
+          "title": "Dockerfile.server-cpu sin pinning de versión Ubuntu",
+          "severity": "low",
+          "description": "Dockerfile.server-cpu:4 usa FROM ubuntu:22.04 (no pinned a digest). Builds no reproducibles y vulnerable a cache poisoning.",
+          "recommendation": "FROM ubuntu:22.04@sha256:<digest>. Pin versiones de paquetes apt críticos. Añadir --no-install-recommends para reducir superficie y tamaño.",
+          "impact": 4,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://docs.docker.com/develop/dev-best-practices/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/12"
+        }
+      ]
+    },
+    "nextjs_frontend": {
+      "name": "Next.js Frontend",
+      "icon": "⚛️",
+      "color": "#61dafb",
+      "summary": "441 console.log y 27 ': any' repartidos en hooks/contextos, ESLint sin reglas extra, eslint config mínima sin prettier ni a11y; bundle pesado por BlockNote+Remirror+Tiptap simultáneos.",
+      "findings": [
+        {
+          "id": "FE-001",
+          "title": "Tres editores rich-text en el bundle simultáneamente",
+          "severity": "critical",
+          "description": "package.json declara @blocknote/core+react+shadcn 0.36, @remirror/* (8 paquetes) y @tiptap/* (4 paquetes). Tiptap y BlockNote ambos basados en ProseMirror, Remirror también. Esto duplica prosemirror-* en el bundle Next y dispara el peso del webview a varios MB innecesarios.",
+          "recommendation": "Auditar usos: BlockNote es el principal según components/AISummary/BlockNoteSummaryView.tsx. Eliminar Remirror y Tiptap si no son necesarios, o lazy-load con next/dynamic({ssr: false}). Validar con next build --profile y @next/bundle-analyzer.",
+          "impact": 8,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://nextjs.org/docs/pages/building-your-application/optimizing/bundle-analyzer"
+          ]
+        },
+        {
+          "id": "FE-002",
+          "title": "441 console.log en código TypeScript de producción",
+          "severity": "high",
+          "description": "grep cuenta 441 console.log en 65 archivos de frontend/src. Concentraciones: hooks/useRecordingStart.ts (18), hooks/useAudioPlayer.ts (24), components/recording/RecordingControls.tsx (30), contexts/AuthContext.tsx (26), contexts/TranscriptContext.tsx (24).",
+          "recommendation": "Adoptar src/lib/logger.ts en todo el código y prohibir console.* con regla ESLint no-console: ['error', { allow: ['warn','error'] }]. SWC strip de console en build de producción.",
+          "impact": 7,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://eslint.org/docs/latest/rules/no-console"
+          ]
+        },
+        {
+          "id": "FE-003",
+          "title": "ESLint config mínima, sin a11y ni reglas estrictas",
+          "severity": "high",
+          "description": "frontend/eslint.config.mjs solo extiende next/core-web-vitals y next/typescript. No incluye eslint-plugin-jsx-a11y, no-explicit-any está heredado pero genera 27 ocurrencias visibles.",
+          "recommendation": "Añadir plugin:jsx-a11y/recommended, @typescript-eslint/no-explicit-any: error, @typescript-eslint/no-floating-promises, react-hooks/exhaustive-deps. Configurar lint-staged + husky.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/jsx-eslint/eslint-plugin-jsx-a11y"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/13"
+        },
+        {
+          "id": "FE-004",
+          "title": "Tipos any explícitos en servicios críticos",
+          "severity": "medium",
+          "description": "27 occurrencias de ': any' en frontend/src. Notables: features/conversations/services/conversations.service.ts (6), components/Sidebar/SidebarProvider.tsx (3).",
+          "recommendation": "Generar tipos compartidos desde Rust a TS con ts-rs o specta + tauri-specta. Reemplazar any por unknown + zod parse en boundaries.",
+          "impact": 6,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://github.com/oscartbeaumont/tauri-specta"
+          ]
+        },
+        {
+          "id": "FE-005",
+          "title": "Next 14.2 con vulnerabilidad de cache poisoning conocida",
+          "severity": "high",
+          "description": "package.json:77 usa next ^14.2.25. La línea 14.2 acumula varios CVE de 2024-2025 (Server Actions, image optimization SSRF).",
+          "recommendation": "Bumpear a la última 14.2 publicada (revisar GHSA-fr5h-rqp8-mj6g y GHSA-7gfc-8cq8-jh5f). Evaluar coste de migrar a Next 15 estable.",
+          "impact": 7,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/vercel/next.js/security/advisories"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/13"
+        },
+        {
+          "id": "FE-006",
+          "title": "Riesgo de hidratación en theme Dark forzado",
+          "severity": "low",
+          "description": "tauri.conf.json define theme: 'Dark' y visible: false. Si la app usa next-themes, puede haber mismatch de hidratación entre el render SSR/SSG y el primer paint del webview.",
+          "recommendation": "Asegurar suppressHydrationWarning en <html> y aplicar tema vía data-attribute en server o durante el script blocking en _document.",
+          "impact": 3,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://nextjs.org/docs/messages/react-hydration-error"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/13"
+        },
+        {
+          "id": "FE-007",
+          "title": "Dependencias UI duplicadas: radix-ui y @radix-ui/* individuales",
+          "severity": "medium",
+          "description": "package.json incluye 'radix-ui':'^1.4.3' (paquete agregador) además de 13 paquetes @radix-ui/react-* individuales. Esto duplica módulos en el grafo y aumenta el bundle.",
+          "recommendation": "Elegir uno solo: o el agregador 'radix-ui' o los individuales. Eliminar el otro y verificar tree-shaking con next build --profile.",
+          "impact": 4,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://www.radix-ui.com/primitives/docs/overview/introduction"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/13"
+        }
+      ]
+    },
+    "ux_desktop": {
+      "name": "UX Desktop",
+      "icon": "🖥️",
+      "color": "#9b59b6",
+      "summary": "Maity tiene system tray funcional pero faltan atajos globales de teclado, indicador de grabación visible fuera de la ventana, y mejoras de accesibilidad. La advertencia de Bluetooth solo está documentada en markdown sin UI nativa robusta.",
+      "findings": [
+        {
+          "id": "UX-001",
+          "title": "Sin atajos globales de teclado para iniciar/parar grabación",
+          "severity": "high",
+          "description": "Grep en frontend/src-tauri no encuentra ningún uso de global_shortcut. tauri.conf.json no incluye el plugin tauri-plugin-global-shortcut. El usuario debe abrir la ventana o el tray para iniciar/parar una grabación, lo cual interrumpe el flujo durante una llamada activa.",
+          "recommendation": "Añadir tauri-plugin-global-shortcut, registrar capability, y exponer en Settings UI shortcuts configurables (default Ctrl+Shift+R inicia/para, Ctrl+Shift+P pausa).",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://v2.tauri.app/plugin/global-shortcut/"
+          ]
+        },
+        {
+          "id": "UX-002",
+          "title": "Indicador de grabación poco visible cuando ventana está oculta",
+          "severity": "high",
+          "description": "tray.rs:26 establece tooltip estático 'Maity' y solo cambia el menú interno. No cambia el icono del tray (rojo/parpadeante) cuando RecordingState=Recording. El usuario puede olvidar que está grabando si minimiza la ventana (que ya inicia oculta).",
+          "recommendation": "Generar dos iconos (icon_idle.png, icon_recording.png). En set_tray_state crear set_icon dinámico via TrayIcon::set_icon. Adicionalmente actualizar el tooltip con duración 'Grabando 00:12:34' usando intervalo cada 1s.",
+          "impact": 9,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "frontend/src-tauri/src/tray.rs"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/14"
+        },
+        {
+          "id": "UX-003",
+          "title": "Onboarding context existe pero no hay flujo guiado de primer arranque",
+          "severity": "medium",
+          "description": "frontend/src/contexts/OnboardingContext.tsx existe, pero no hay un wizard que solicite permisos (mic, audio del sistema), pruebe niveles de audio y configure proveedor STT/LLM en el primer arranque.",
+          "recommendation": "Implementar OnboardingWizard de 4 pasos: bienvenida+idioma, permisos+test de nivel, elegir proveedor STT con costos estimados, elegir LLM. Persistir 'onboarding_completed'.",
+          "impact": 7,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "frontend/src/contexts/OnboardingContext.tsx"
+          ]
+        },
+        {
+          "id": "UX-004",
+          "title": "Tema fijo en Dark, sin soporte light/system",
+          "severity": "medium",
+          "description": "tauri.conf.json:20 fija 'theme':'Dark'. No hay detector del tema del SO ni toggle en la UI. Usuarios con preferencia clara o con condiciones visuales no tienen alternativa nativa.",
+          "recommendation": "Cambiar theme a null en tauri.conf.json para detectar tema del SO. Añadir setting 'theme_preference' (light/dark/system) y aplicar en _app.tsx con next-themes.",
+          "impact": 5,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "pending",
+          "references": [
+            "frontend/src-tauri/tauri.conf.json"
+          ]
+        },
+        {
+          "id": "UX-005",
+          "title": "Falta accesibilidad ARIA en RecordingControls",
+          "severity": "medium",
+          "description": "RecordingControls.tsx, DeviceSelection.tsx no tienen aria-label/aria-pressed para botones de grabar/pausar. Lectores de pantalla anuncian 'botón' sin estado.",
+          "recommendation": "Añadir aria-label='Iniciar grabación'/'Detener grabación' dinámico, aria-pressed según isRecording, role='timer' al display de duración con aria-live='polite'. Probar con NVDA/VoiceOver.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "frontend/src/components/recording/RecordingControls.tsx"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/14"
+        },
+        {
+          "id": "UX-006",
+          "title": "Notificaciones nativas infrautilizadas",
+          "severity": "low",
+          "description": "tauri.conf.json incluye permission notification:default pero no se observa notification API usada para eventos clave (grabación iniciada, transcripción lista, error de Deepgram, resumen completado).",
+          "recommendation": "Emitir notificaciones nativas via @tauri-apps/plugin-notification al: completar resumen, perder conexión con Deepgram >30s, terminar grabación >2h. Permitir desactivarlas en Settings.",
+          "impact": 5,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "pending",
+          "references": [
+            "https://v2.tauri.app/plugin/notification/"
+          ]
+        },
+        {
+          "id": "UX-007",
+          "title": "Advertencia Bluetooth solo en markdown, no en UI proactiva",
+          "severity": "low",
+          "description": "BLUETOOTH_PLAYBACK_NOTICE.md describe el problema, y existe BluetoothPlaybackWarning.tsx pero no está claro cuándo se muestra. El usuario que reproduce desde audífonos BT a 8-16kHz oye chipmunk y cree que la grabación está dañada.",
+          "recommendation": "Detectar dispositivo de salida activo (CoreAudio/WASAPI) al pulsar Play. Si el sample rate negociado < 24kHz o el device tipo Bluetooth, mostrar BluetoothPlaybackWarning con CTA 'Cambiar a altavoces'.",
+          "impact": 5,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "BLUETOOTH_PLAYBACK_NOTICE.md"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/28"
+        },
+        {
+          "id": "UX-010",
+          "title": "Falta preprocessing DSP en el audio hacia el STT (DC bias + rumble)",
+          "severity": "medium",
+          "description": "El pipeline de audio envia muestras con DC offset y rumble <80Hz directamente al VAD/RNNoise/Parakeet. El DC bias sesga la estimación de ganancia de RNNoise y el transitorio del HP existente. Resultado: STT recibe input menos limpio de lo posible.",
+          "recommendation": "Añadir módulo audio::dsp con dc_remove + high_pass_80hz + peak_normalize_minus3db (7 unit tests). Wire como STEP 0 del mic path en pipeline.rs antes del HP filter existente. PR #19.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/19",
+          "references": []
+        },
+        {
+          "id": "UX-ACCOUNT-BADGE",
+          "title": "Badge de cuenta visible en sidebar",
+          "severity": "high",
+          "description": "Usuario pedía saber con qué cuenta estaba trabajando. Sin indicador de quién está logueado, confusión en multi-cuenta.",
+          "recommendation": "SidebarControls.tsx: render <User avatar + displayName + email + signOut button> arriba del botón grabar. Usa useAuth() -> maityUser + user.",
+          "impact": 7,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #27]"
+        },
+        {
+          "id": "UX-SIMPLIFY-WHISPER-OFF",
+          "title": "Desactivar Whisper local por simplificación",
+          "severity": "medium",
+          "description": "Usuario pidió simplificar: Parakeet es suficiente para es-419. Whisper local queda desactivado (engine preservado pero no precargado ni auto-init).",
+          "recommendation": "lib.rs setup: eliminar la rama if transcript_provider == 'localWhisper' → whisper_init(). Documentar decision.",
+          "impact": 6,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #27] Código de Whisper intacto, sólo desactivado el startup."
+        },
+        {
+          "id": "UX-BRAND-MAITY",
+          "title": "Rebrand Meetily → Maity en código y UI",
+          "severity": "high",
+          "description": "El producto se llama Maity, no Meetily. Legado por fork. Había 9 archivos de código con 'Meetily' visible al usuario.",
+          "recommendation": "Reemplazar en código user-facing (no tocar: URLs de CDN upstream, config paths histórica de notifications, assembly_data.json histórica). Migrar folder default recordings con fallback legacy→modern.",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #27] recording_preferences.rs migrado con compat legacy; URLs de CDN conservadas."
+        },
+        {
+          "id": "UX-RECOVERY-ERRORS",
+          "title": "Auto-recovery con reporte de errores accionable",
+          "severity": "high",
+          "description": "Antes los fallos de auto-recovery se tragaban silenciosamente en console.error. Ahora se muestra un toast.error con la primera causa real del fallo y boton 'Abrir recuperacion manual' que abre el modal legacy como fallback.",
+          "recommendation": "Capturar failures array en autoRecover, mostrar toast.error con description del primer fallo + action para abrir modal manual.",
+          "impact": 8,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #29]"
+        },
+        {
+          "id": "UX-MINIMIZED-BUTTON",
+          "title": "Tray start_recording nativo sin depender del webview",
+          "severity": "high",
+          "description": "Al minimizar la ventana, el webview se suspende y el handler del tray 'Start Recording' fallaba porque dependia de eval() + sessionStorage + location.assign(). Fix: llamar directamente la funcion Rust start_recording_with_meeting_name desde el tray, bypaseando completamente el frontend.",
+          "recommendation": "tray.rs::toggle_recording_handler en la rama !is_recording llama la funcion Rust nativa del comando. Se agrego tambien focus_main_window_cmd expuesto al frontend para mostrar ventana en eventos criticos.",
+          "impact": 9,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #30]"
+        }
+      ]
+    },
+    "transcription": {
+      "name": "Transcription",
+      "icon": "🎙️",
+      "color": "#1abc9c",
+      "summary": "Stack maduro con múltiples providers (Deepgram, Whisper, Parakeet, Canary, Moonshine), pero la reconexión Deepgram limita a 3 intentos sin backoff exponencial, no hay fallback automático a Whisper offline, y los costos por minuto no se exponen al usuario.",
+      "findings": [
+        {
+          "id": "STT-001",
+          "title": "Reconexión Deepgram limitada a 3 intentos sin backoff exponencial",
+          "severity": "critical",
+          "description": "deepgram_provider.rs:98 define MAX_RECONNECT_ATTEMPTS=3 y RECONNECT_DELAY_MS=1000 (constante). En reuniones largas con WiFi inestable, tras 3 fallos en 3s la transcripción se detiene definitivamente sin avisar al usuario.",
+          "recommendation": "Implementar backoff exponencial: delay = min(1000 * 2^attempt + random(0..500), 30000). Aumentar MAX_RECONNECT_ATTEMPTS a 10. Tras agotar intentos, emitir evento 'transcription-fallback' al frontend y conmutar a whisper_provider local automáticamente.",
+          "impact": 9,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "frontend/src-tauri/src/audio/transcription/deepgram_provider.rs"
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
+        },
+        {
+          "id": "STT-002",
+          "title": "Sin fallback automático offline cuando Deepgram falla",
+          "severity": "critical",
+          "description": "engine.rs y worker.rs orquestan providers pero no hay lógica de fallback DeepgramRealtimeTranscriber → WhisperProvider cuando ensure_connected falla repetidamente. Si el JWT del proxy Cloudflare expira, el usuario pierde toda la transcripción.",
+          "recommendation": "En engine.rs envolver la llamada al provider primario en un FallbackChain. Si Deepgram retorna ConnectionFailed N veces consecutivas, instanciar WhisperProvider con modelo ggml-small y retomar transcripción sobre el audio capturado.",
+          "impact": 10,
+          "effort": 7,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "frontend/src-tauri/src/audio/transcription/engine.rs"
+          ]
+        },
+        {
+          "id": "STT-003",
+          "title": "Idioma Deepgram hardcoded a es-419 sin auto-detección real",
+          "severity": "high",
+          "description": "deepgram_provider.rs:83 default language='es-419' y build_websocket_url trata 'auto'/'detect' como sinónimos de 'es' fijo, ignorando la posibilidad real de auto-detect (param 'multi'). Reuniones bilingües (es/en) pierden segmentos en inglés.",
+          "recommendation": "Cuando el usuario elija auto-detect, enviar language=multi (soportado por nova-3). Añadir un setting 'preferred_languages' multi-select y mostrar idioma detectado por segmento.",
+          "impact": 7,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "frontend/src-tauri/src/audio/transcription/deepgram_provider.rs"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/17"
+        },
+        {
+          "id": "STT-004",
+          "title": "Pausa de grabación no envía CloseStream a Deepgram",
+          "severity": "high",
+          "description": "tray.rs maneja Pausing/Paused states pero deepgram_provider.rs solo expone close_persistent_stream para cierre definitivo. Durante una pausa el WebSocket sigue abierto consumiendo cuota Deepgram (~$0.0043/min) sin audio.",
+          "recommendation": "Añadir pause_stream() y resume_stream() en DeepgramRealtimeTranscriber. En pause: enviar Finalize, drop SplitSink, cancelar keepalive_handle. En resume: reabrir WS reusando connection_generation+1.",
+          "impact": 7,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "frontend/src-tauri/src/audio/recording_lifecycle.rs"
+          ]
+        },
+        {
+          "id": "STT-005",
+          "title": "Costos por minuto no expuestos al usuario antes de grabar",
+          "severity": "medium",
+          "description": "El usuario no ve cuánto le costará una reunión de 1h con Deepgram nova-3 (~$0.26/h) vs Whisper local (gratis). No hay un widget que estime el costo actual ni el acumulado del mes.",
+          "recommendation": "En Settings y al iniciar grabación mostrar: 'Proveedor: Deepgram nova-3 ~$0.0043/min'. Acumular minutos transcritos por proveedor en una nueva tabla usage_stats y mostrar dashboard mensual.",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "https://deepgram.com/pricing"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/26"
+        },
+        {
+          "id": "STT-006",
+          "title": "Sample rate fijo 16kHz limita calidad de audio",
+          "severity": "medium",
+          "description": "DeepgramConfig::default sample_rate=16000 pero BLUETOOTH_PLAYBACK_NOTICE.md indica que Maity graba a 48kHz. Hay downsample en el pipeline que puede degradar consonantes sibilantes en español. Deepgram nova-3 acepta 48kHz nativo.",
+          "recommendation": "Permitir sample_rate=48000 cuando el provider sea nova-3 y el origen sea ya 48kHz. Evitar el downsample intermedio cuando el destino soporte la frecuencia origen.",
+          "impact": 5,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "frontend/src-tauri/src/audio/transcription/deepgram_provider.rs"
+          ]
+        },
+        {
+          "id": "STT-007",
+          "title": "VAD propio (vad.rs) podría reducir costos Deepgram drásticamente",
+          "severity": "medium",
+          "description": "Existe frontend/src-tauri/src/audio/vad.rs pero no parece aplicarse antes de enviar audio a Deepgram. En reuniones con silencios largos se envía audio mudo facturado.",
+          "recommendation": "Encadenar VAD antes de DeepgramRealtimeTranscriber::transcribe: si frame_rms < threshold por >800ms, no enviar al WS. Medir reducción de minutos facturados (esperado 20-40%).",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "frontend/src-tauri/src/audio/vad.rs"
+          ]
+        },
+        {
+          "id": "UX-011",
+          "title": "Silero VAD tuneado para Whisper, no para Parakeet (fragmenta speech)",
+          "severity": "high",
+          "description": "Los valores actuales (min_speech 150ms, pos_threshold 0.50, redemption variable) están optimizados para Whisper que maneja bien chunks cortos. Parakeet hallucina en chunks <800ms y pierde contexto sin suficiente padding.",
+          "recommendation": "min_speech_time 150→800ms, redemption floor 1000ms, pos_threshold 0.50→0.55, pre_pad 150→200, post_pad 400→500ms. Documentar MAX_SPEECH_MS=30s como cap soft. Asamblea STT-007 voto 4 APOYA / 0 OBJETA. PR #20.",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/20",
+          "references": []
+        },
+        {
+          "id": "UX-013",
+          "title": "Parakeet emite hallucinations clasicas sin filtro post-processing",
+          "severity": "high",
+          "description": "Parakeet CTC emite tokens especiales ([blank], <unk>, SentencePiece ▁), loops de palabra (\"the the the the\") y loops de frase (\"thank you thank you thank you\"). Estos llegan crudos al UI y al summarizer, degradando el producto final.",
+          "recommendation": "Nuevo módulo parakeet_engine::text_cleanup con strip_special_tokens + dedupe_consecutive_words (max 2) + dedupe_consecutive_phrases (window 2..5). 12 unit tests verdes. Wired en model::decode_tokens antes de poblar TimestampedResult.text. PR #21.",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/21",
+          "references": []
+        }
+      ]
+    },
+    "ai_llm": {
+      "name": "AI LLM",
+      "icon": "🤖",
+      "color": "#e67e22",
+      "summary": "transcript_processor.py soporta Claude/Groq/OpenAI/Ollama via pydantic-ai pero el chunk_size hardcoded, result_retries=2 sin backoff, sin estimación de tokens previa, sin streaming al frontend, y ningún cap de costo configurable hacen que reuniones largas puedan generar facturas inesperadas.",
+      "findings": [
+        {
+          "id": "LLM-001",
+          "title": "Sin estimación ni cap de tokens antes de invocar API de pago",
+          "severity": "critical",
+          "description": "transcript_processor.py:164 hace text[i:i+chunk_size] sin contar tokens reales. Una reunión de 2h transcrita ~24k palabras genera ~32k tokens; con OpenAI gpt-4o sale ~$0.16/resumen sin advertencia.",
+          "recommendation": "Antes de process_transcript, usar tiktoken o tokenizers para contar tokens. Multiplicar por price_per_1k del modelo. Si > umbral configurable (default $0.50), retornar 402-equivalent y exigir confirmación.",
+          "impact": 9,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "backend/app/transcript_processor.py",
+            "https://github.com/openai/tiktoken"
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
+        },
+        {
+          "id": "LLM-002",
+          "title": "Errores por chunk solo se loggean: resúmenes parciales silenciosos",
+          "severity": "high",
+          "description": "transcript_processor.py:225 captura excepciones por chunk con `continue` y no devuelve la lista de fallos al cliente. Si 5 de 10 chunks fallan por rate-limit, el usuario obtiene un resumen incompleto sin saberlo.",
+          "recommendation": "Acumular failed_chunks: List[Dict] con índice y razón. Implementar retry exponencial con tenacity (3 intentos, base=2s). Devolver en /process-transcript la lista de chunks fallidos.",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "https://tenacity.readthedocs.io/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/24"
+        },
+        {
+          "id": "LLM-003",
+          "title": "Sin streaming del resumen al frontend",
+          "severity": "high",
+          "description": "process_transcript_api lanza BackgroundTask y devuelve process_id, el frontend hace polling vía /get-summary. Para reuniones largas el usuario espera 30-90s con un spinner sin feedback.",
+          "recommendation": "Crear endpoint /process-transcript/stream (SSE o WebSocket /ws/summary/{meeting_id}). En transcript_processor usar agent.run_stream() de pydantic-ai. Frontend consume con EventSource.",
+          "impact": 7,
+          "effort": 7,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "backend/app/routes/summaries.py"
+          ]
+        },
+        {
+          "id": "LLM-004",
+          "title": "Prompt español/inglés mezclado y no localizado",
+          "severity": "medium",
+          "description": "El prompt en transcript_processor.py:174-196 está enteramente en inglés ('Given the following meeting transcript chunk...'), pero las reuniones son en español. Esto degrada la calidad de extracción de Action Items y nombres propios en español.",
+          "recommendation": "Crear plantillas de prompt por idioma (es, en) en backend/app/prompts/. Detectar idioma de la transcripción (langdetect) o usar el setting del usuario.",
+          "impact": 7,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "backend/app/transcript_processor.py"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/23"
+        },
+        {
+          "id": "LLM-005",
+          "title": "llama-helper sin warmup ni health-check expuesto",
+          "severity": "medium",
+          "description": "llama-helper/src/main.rs implementa Generate/Ping/Shutdown sobre stdio JSON. Detect_vram retorna 4.0 fallback sin Vulkan detection. Primer Generate sufre cold-start de 5-15s cargando GGUF.",
+          "recommendation": "Al lanzar Tauri, spawnear sidecar llama-helper y enviarle un Generate con max_tokens=1 prompt='warmup'. Implementar Vulkan VRAM detection vía vulkano o llamada CLI a vulkaninfo. Exponer Health response.",
+          "impact": 6,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "llama-helper/src/main.rs"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/27"
+        },
+        {
+          "id": "LLM-006",
+          "title": "Modelo OpenAI por defecto no especificado, riesgo de gpt-3.5-turbo deprecado",
+          "severity": "medium",
+          "description": "OpenAIModel(model_name, ...) toma model_name del request sin validación. El usuario puede pasar 'gpt-3.5-turbo' (deprecado abril 2025) o un nombre inexistente.",
+          "recommendation": "En backend/app/routes/config.py exponer GET /models/recommended por proveedor. Validar model_name contra whitelist en TranscriptRequest. Frontend muestra dropdown con etiquetas de costo.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "backend/app/transcript_processor.py"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/17"
+        },
+        {
+          "id": "LLM-007",
+          "title": "result_retries=2 ineficaz frente a fallos de validación pydantic complejos",
+          "severity": "low",
+          "description": "transcript_processor.py:153 usa result_retries=2 del Agent. Para SummaryResponse con 7 secciones y bloques anidados, modelos pequeños fallan con frecuencia el schema en >2 intentos.",
+          "recommendation": "Aumentar result_retries a 5 para modelos < 30B parámetros. En caso de fallo de validación final, intentar parsear con json5 y un esquema más laxo antes de validar.",
+          "impact": 5,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "backend/app/transcript_processor.py"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/17"
+        }
+      ]
+    },
+    "devops_ci": {
+      "name": "DevOps CI",
+      "icon": "⚙️",
+      "color": "#34495e",
+      "summary": "Pipeline Windows con DigiCert KeyLocker es robusto pero pesado. build-windows.yml es solo workflow_dispatch (no auto en PR). Falta ARM64 macOS, no se firman las imágenes Docker, llama-helper se compila CPU-only en Windows perdiendo Vulkan, y release.yml genera versiones .X.Y.Z.N patchando el tag.",
+      "findings": [
+        {
+          "id": "OPS-001",
+          "title": "build-windows.yml sólo workflow_dispatch: no se prueba en cada PR",
+          "severity": "critical",
+          "description": "build-windows.yml:3 declara únicamente on: workflow_dispatch. No corre en push a main ni en PRs, así que regresiones específicas de Windows (Vulkan, signing, llama-helper sidecar) se descubren tarde.",
+          "recommendation": "Añadir on: pull_request: paths: ['frontend/**','llama-helper/**','Cargo.toml'] con sign-build=false y upload-artifacts=false. Cachear cargo y pnpm.",
+          "impact": 9,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            ".github/workflows/build-windows.yml"
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
+        },
+        {
+          "id": "OPS-002",
+          "title": "release.yml inventa subversiones X.Y.Z.N no semver",
+          "severity": "critical",
+          "description": "release.yml:38-58 incrementa LATEST_MINOR hasta 100 creando tags v0.2.31.1, v0.2.31.2... Esto rompe semver, confunde a updaters, y permite hasta 100 releases con la misma versión.",
+          "recommendation": "Forzar a que la versión en tauri.conf.json sea única antes del release: si v$VERSION ya existe, fallar. Adoptar bump automatizado vía conventional commits + release-please o changesets.",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            ".github/workflows/release.yml"
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
+        },
+        {
+          "id": "OPS-003",
+          "title": "llama-helper se compila CPU-only en Windows perdiendo Vulkan/CUDA",
+          "severity": "high",
+          "description": "build-windows.yml:644-660 compila llama-helper SIN features GPU ('Vulkan build has CMake race condition issues'). El binario distribuido a usuarios con GPU NVIDIA/AMD ejecuta inferencia LLM en CPU, 5-20x más lento.",
+          "recommendation": "Investigar la race condition de llama-cpp-sys-2 con Vulkan. Como mitigación inmediata, usar -j 1 al compilar. Alternativamente compilar dos sidecars: llama-helper-cpu y llama-helper-vulkan.",
+          "impact": 8,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            ".github/workflows/build-windows.yml"
+          ]
+        },
+        {
+          "id": "OPS-004",
+          "title": "Imágenes Docker (server-cpu/gpu/macos) sin firma ni SBOM",
+          "severity": "medium",
+          "description": "backend/Dockerfile.server-cpu produce ~700MB. No hay cosign sign, ni SBOM (syft), ni publish a un registro automatizado. Tampoco multi-platform.",
+          "recommendation": "Crear .github/workflows/docker-publish.yml con docker/build-push-action multi-arch, generar SBOM con anchore/sbom-action, firmar con cosign sign-blob usando OIDC keyless, publicar a ghcr.io.",
+          "impact": 6,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "backend/Dockerfile.server-cpu"
+          ]
+        },
+        {
+          "id": "OPS-005",
+          "title": "Sin build automático macOS ARM64 (Apple Silicon)",
+          "severity": "high",
+          "description": "Existen build-macos.yml y tauri.macos.conf.json pero no se observa target aarch64-apple-darwin junto a x86_64. macOS ARM64 es ya el ~80% de instalaciones nuevas; un build solo Intel corre bajo Rosetta 2.",
+          "recommendation": "En build-macos.yml usar matrix.target: [x86_64-apple-darwin, aarch64-apple-darwin] y producir un universal binary o dos DMGs distintos.",
+          "impact": 8,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            ".github/workflows/build-macos.yml"
+          ]
+        },
+        {
+          "id": "OPS-006",
+          "title": "Test de pre-firma siempre opcional: regresiones de signing pasan al build",
+          "severity": "medium",
+          "description": "build-windows.yml:246 marca 'Pre-Build Signing Test' con if test-signing == 'true' (default false). Cuando falla el signing real al final del build (~50min), se desperdician minutos de runner.",
+          "recommendation": "Forzar pre-build signing test cuando sign-build=true (eliminar el toggle test-signing). Si DigiCert healthcheck falla, abortar antes de cualquier compilación.",
+          "impact": 5,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            ".github/workflows/build-windows.yml"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/32"
+        },
+        {
+          "id": "OPS-007",
+          "title": "Updater pubkey hardcoded en tauri.conf.json sin rotación documentada",
+          "severity": "medium",
+          "description": "tauri.conf.json:127 contiene la pubkey minisign del updater. Si la TAURI_SIGNING_PRIVATE_KEY se compromete, hay que regenerar y publicar versión 'puente', pero no existe documentación ni script de rotación.",
+          "recommendation": "Documentar en SETUP_WINDOWS.md procedimiento de rotación. Considerar tauri-plugin-updater dual-key support.",
+          "impact": 4,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "frontend/src-tauri/tauri.conf.json"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
+        },
+        {
+          "id": "OPS-008",
+          "title": "Sin SOC 2 compliance roadmap documentado",
+          "severity": "high",
+          "description": "Para vender a empresas medianas+ (>500 employees), SOC 2 Type II es de facto obligatorio. Sin un roadmap publico, los buyers asumen que estamos años de poder firmarlo. Vanta/Drata/Secureframe estandarizan el proceso pero requieren documentacion previa.",
+          "recommendation": "docs/SOC2_ROADMAP.md con: controls que ya cumplimos (CC5, CC6, CC7), gaps actuales, timeline estimado a Type I (3-6 meses) y Type II (1 año). Listar herramienta de monitoreo elegida (Vanta/Drata/Secureframe) y auditor.",
+          "impact": 8,
+          "effort": 5,
+          "phase": "v3.0",
+          "status": "in-progress",
+          "references": [
+            "https://www.vanta.com/resources/soc-2-compliance"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/29"
+        },
+        {
+          "id": "OPS-009",
+          "title": "Sin status page publica",
+          "severity": "medium",
+          "description": "Sin status.maity.local o similar, los clientes B2B no tienen forma de verificar uptime, incidentes pasados, o si hay un outage AHORA. Es uno de los items checklist de cualquier enterprise procurement.",
+          "recommendation": "Status page (statuspage.io, BetterUptime, Cachet self-hosted) que monitoree: backend api, deepgram, openai, updater. Publicar incidentes con post-mortem. Mantener historial 90 dias.",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://www.atlassian.com/software/statuspage"
+          ]
+        },
+        {
+          "id": "OPS-010",
+          "title": "Sin incident response plan ni runbook",
+          "severity": "medium",
+          "description": "Si manana se descubre una vulnerabilidad o un cliente reporta data loss, no hay un proceso documentado: quien escala, en cuanto tiempo, como comunicar. SOC 2 CC7.3 lo exige.",
+          "recommendation": "docs/INCIDENT_RESPONSE.md con severities (P0/P1/P2), tiempos de respuesta, on-call rotation, comunicacion. Runbooks separados por escenario (data loss, security breach, deepgram outage).",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "https://response.pagerduty.com/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/31"
+        },
+        {
+          "id": "PORTAL-002",
+          "title": "Portal de asamblea se cae silenciosamente (sin /health robusto ni logs)",
+          "severity": "high",
+          "description": "El portal FastAPI (puerto 8770) moría sin dejar rastro. /health devolvía solo {ok:true} sin uptime/mem/cpu. Sin Semaphore ni timeout en middleware, sin single-instance lock, sin JSONL request log, y el frontend JS usaba fetch() crudo que cuelga el dashboard al primer hipo del servidor.",
+          "recommendation": "Añadir /health con uptime+mem+cpu+pid+version, Semaphore(8), content-length cap 10MB, middleware con try/except + timeout 10s + JSONL log rotado 30d, lock file con detección PID stale, safeFetch(url, timeout, fallback) en el HTML. Commit e20f838.",
+          "impact": 7,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/commit/e20f838",
+          "references": []
+        }
+      ]
+    },
+    "privacy_legal": {
+      "name": "Privacidad y Legal",
+      "icon": "⚖️",
+      "color": "#7f8c8d",
+      "summary": "PRIVACY_POLICY.md afirma 'local-first' pero el README confirma que el audio se envía a Deepgram y el texto a OpenAI; existe una contradicción material. Falta consentimiento explícito de participantes (one/two-party consent), retención configurable, DPA con subprocesadores y avisos de jurisdicción (US/EU/MX).",
+      "findings": [
+        {
+          "id": "LEG-001",
+          "title": "Política de privacidad contradice el flujo real (Deepgram + OpenAI)",
+          "severity": "critical",
+          "description": "PRIVACY_POLICY.md líneas 11-16 afirman 'Audio recordings: Never transmitted to external servers' y 'Meeting transcription: Processed entirely on your device'. Sin embargo README.md confirma que el flujo por defecto envía audio PCM a Deepgram y transcripts a OpenAI. Esto constituye declaración engañosa al consumidor (FTC §5, art. 7 LFPDPPP, art. 5 GDPR).",
+          "recommendation": "1) Reescribir PRIVACY_POLICY.md para reflejar honestamente el envío a Deepgram/OpenAI por defecto. 2) Listar Deepgram y OpenAI como subprocesadores con enlaces a sus DPAs. 3) Etiquetar el modo Whisper local como 'opcional' y el cloud como 'predeterminado'. 4) Versionar la política con fecha real.",
+          "impact": 10,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://www.ftc.gov/legal-library/browse/statutes/federal-trade-commission-act",
+            "https://gdpr-info.eu/art-5-gdpr/",
+            "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFPDPPP.pdf"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/9"
+        },
+        {
+          "id": "LEG-002",
+          "title": "Falta flujo de consentimiento de participantes (two-party consent)",
+          "severity": "critical",
+          "description": "El README dice 'Maity te recuerda esto antes de cada grabacion' pero no existe componente UI de consentimiento explícito ni registro de aceptación. En 11 estados de EE.UU. la grabación sin consentimiento de todas las partes es delito.",
+          "recommendation": "1) Modal pre-grabación bloqueante con checkbox 'He informado a los participantes'. 2) Texto legal por jurisdicción (US-2P, EU-GDPR, MX-LFPDPPP). 3) TTS opcional 'Esta llamada está siendo grabada'. 4) Almacenar timestamp de aceptación en SQLite junto al meeting_id.",
+          "impact": 10,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "https://www.justia.com/50-state-surveys/recording-phone-calls-and-conversations/",
+            "https://gdpr-info.eu/art-6-gdpr/"
+          ],
+          "notes": "[2026-04-08 iter #28] docs/legal/TWO_PARTY_CONSENT_FLOW.md draft by agent"
+        },
+        {
+          "id": "LEG-003",
+          "title": "Sin política de retención de datos ni purga automática",
+          "severity": "high",
+          "description": "Grep no encuentra lógica de 'retention' o 'auto delete'. Los transcripts y audio se acumulan indefinidamente. GDPR art. 5(1)(e) (storage limitation) y art. 17 (right to erasure) exigen políticas claras.",
+          "recommendation": "1) Settings > Privacy > 'Eliminar reuniones después de N días' (default 90). 2) Tarea diaria de purga. 3) Botón 'Borrar todos mis datos' con confirmación doble. 4) Documentar en PRIVACY_POLICY.md.",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://gdpr-info.eu/art-17-gdpr/"
+          ]
+        },
+        {
+          "id": "LEG-004",
+          "title": "Sin DPA ni acuerdo de subprocesamiento documentado",
+          "severity": "high",
+          "description": "Para usuarios EU bajo GDPR art. 28, cada subprocesador (Deepgram, OpenAI, PostHog) requiere DPA firmado. El README no instruye sobre la necesidad de aceptar el DPA de Deepgram antes de usar la integración.",
+          "recommendation": "1) docs/SUBPROCESSORS.md listando Deepgram, OpenAI, PostHog, Sentry con enlaces a DPAs. 2) Checkbox 'Acepto los términos de Deepgram y OpenAI' al ingresar API keys.",
+          "impact": 7,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://gdpr-info.eu/art-28-gdpr/",
+            "https://www.deepgram.com/legal/dpa"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
+        },
+        {
+          "id": "LEG-005",
+          "title": "Falta Términos de Servicio (ToS) propios",
+          "severity": "medium",
+          "description": "Solo existe LICENSE.md (MIT). No hay ToS para el usuario final con limitación de responsabilidad para grabación ilegal, indemnización, ni jurisdicción.",
+          "recommendation": "Crear TERMS_OF_SERVICE.md con: aceptación al primer uso, prohibición de uso ilegal, disclaimer, limitación de responsabilidad, jurisdicción aplicable.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://www.iubenda.com/en/help/77-terms-and-conditions"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
+        },
+        {
+          "id": "LEG-006",
+          "title": "Política de privacidad sin fecha real ni versionado",
+          "severity": "medium",
+          "description": "PRIVACY_POLICY.md línea 3 dice literalmente '*Last updated: [Current Date]*' (placeholder no reemplazado). Línea 125 menciona 'v0.0.5' pero la versión actual es 0.2.31.",
+          "recommendation": "1) Reemplazar [Current Date] con fecha real ISO. 2) Tabla de versiones al final con changelog. 3) Hook pre-release que falla si PRIVACY_POLICY.md no fue actualizado.",
+          "impact": 4,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://gdpr.eu/privacy-notice/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/2"
+        },
+        {
+          "id": "LEG-007",
+          "title": "Sin avisos específicos por jurisdicción (US/EU/MX)",
+          "severity": "medium",
+          "description": "El producto está en español pero no menciona LFPDPPP (México), CCPA/CPRA, ni los requisitos de Aviso de Privacidad mexicano (art. 16 LFPDPPP) que exige derechos ARCO, datos del responsable.",
+          "recommendation": "Crear secciones específicas por jurisdicción. Agregar contacto del responsable. Listar derechos ARCO con instrucciones de ejercicio.",
+          "impact": 7,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFPDPPP.pdf",
+            "https://oag.ca.gov/privacy/ccpa"
+          ]
+        },
+        {
+          "id": "LEG-008",
+          "title": "Sin DPA template firmable disponible",
+          "severity": "high",
+          "description": "GDPR Art. 28 requiere DPA firmado entre cliente (controller) y Maity (processor). Sin un template disponible para descarga/firma, cada cliente EU se atasca. Los competidores tienen DPA ready-to-sign en sus paginas legal.",
+          "recommendation": "docs/legal/DPA_TEMPLATE.md basado en EU SCCs Module 2 (Controller to Processor). Listar Maity como processor + sub-processors (Deepgram, OpenAI, etc). Process: cliente firma -> email a legal@maity.local -> contra-firma.",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://commission.europa.eu/law/law-topic/data-protection/international-dimension-data-protection/standard-contractual-clauses-scc_en"
+          ]
+        }
+      ]
+    },
+    "business": {
+      "name": "Negocio y GTM",
+      "icon": "💼",
+      "color": "#27ae60",
+      "summary": "Maity es BYOK y open-source MIT, lo que limita modelos de monetización SaaS. Compite con Otter ($16.99/mo), Fireflies ($10/mo), Fathom (gratis), Granola ($18/mo). Requiere onboarding sin fricción y posicionamiento claro: 'privacidad + control' para mercado hispano subatendido.",
+      "findings": [
+        {
+          "id": "BIZ-001",
+          "title": "Modelo BYOK limita escalabilidad de revenue",
+          "severity": "high",
+          "description": "El usuario debe traer su propia API key de Deepgram y OpenAI. Esto convierte a Maity en herramienta para developers/power users y elimina el segmento profesional no-técnico que es el 80% del mercado.",
+          "recommendation": "1) Plan 'Maity Cloud' con API keys gestionadas, markup 30% sobre costo bruto. 2) Mantener BYOK como modo 'Pro/Self-hosted' gratis para diferenciación open-source. 3) Implementar proxy backend para esconder keys reales.",
+          "impact": 9,
+          "effort": 7,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://deepgram.com/pricing",
+            "https://otter.ai/pricing"
+          ]
+        },
+        {
+          "id": "BIZ-002",
+          "title": "Sin diferenciación clara vs Granola/Fathom en pitch",
+          "severity": "high",
+          "description": "README presenta a Maity como 'graba, transcribe con Deepgram, resume con ChatGPT' — exactamente lo que hace Fathom (gratis) y Granola ($18/mo). No hay UVP en español: ni 'mejor para Latinoamérica', ni 'privacidad-first verificable'.",
+          "recommendation": "1) UVP: 'El asistente de reuniones para profesionales hispanohablantes que valoran privacidad'. 2) Reescribir hero del README con beneficio cuantificado. 3) Página comparativa Maity vs Otter/Fathom/Granola/Fireflies.",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://www.granola.ai/",
+            "https://fathom.video/"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/15"
+        },
+        {
+          "id": "BIZ-003",
+          "title": "Unit economics no documentados — riesgo de pricing destructivo",
+          "severity": "critical",
+          "description": "No existe modelo financiero. Reunión típica de 1h consume: Deepgram nova-2 ~$0.258, OpenAI GPT-4o ~$0.03 = $0.288/reunión. Usuario promedio 20 reuniones/mes = $5.76 COGS. Si se cobra $9.99/mo: margen bruto 42%, insuficiente para SaaS sustentable.",
+          "recommendation": "1) Spreadsheet de unit economics con escenarios. 2) Pricing sugerido: $12.99/mo con 30h incluidas + $0.50/h adicional. 3) Negociar volume discount con Deepgram. 4) Whisper local como fallback gratuito para usuarios pesados.",
+          "impact": 10,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "https://deepgram.com/pricing",
+            "https://openai.com/api/pricing/"
+          ],
+          "notes": "[2026-04-08 iter #28] docs/business/UNIT_ECONOMICS.md draft by agent"
+        },
+        {
+          "id": "BIZ-004",
+          "title": "Sin estrategia freemium ni trial",
+          "severity": "high",
+          "description": "Producto 100% gratuito (BYOK). No hay activation funnel ni captura de leads. Otter (300 min/mes free), Fireflies (800 min/mes free), Fathom (ilimitado free). Sin freemium, no hay loop de adopción viral.",
+          "recommendation": "1) Tier 'Maity Free' con 5h/mes en cloud propio. 2) Trial de 14 días del plan Pro. 3) 'meeting share' viral. 4) Tracking de activation: % usuarios que graban primera reunión <24h post-install.",
+          "impact": 9,
+          "effort": 7,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://www.lennysnewsletter.com/p/freemium-vs-free-trial"
+          ]
+        },
+        {
+          "id": "BIZ-005",
+          "title": "Solo Windows — pierde 40% del mercado profesional (macOS)",
+          "severity": "high",
+          "description": "README muestra badge 'SO Soportado: Windows'. Sin embargo Cargo.toml ya tiene config completa para macOS con Metal+CoreML. El segmento profesional/founder/consultor usa mayoritariamente Mac.",
+          "recommendation": "1) Habilitar build de macOS en CI (ya hay código). 2) Firmar con Apple Developer ID y notarizar. 3) Publicar DMG en releases. Estimar uplift: 30-50% en TAM hispano profesional.",
+          "impact": 9,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://developer.apple.com/programs/"
+          ]
+        },
+        {
+          "id": "BIZ-006",
+          "title": "Sin canal de distribución ni SEO",
+          "severity": "medium",
+          "description": "El único canal documentado es 'descarga desde GitHub Releases'. No hay landing page propia, no hay SEO para 'transcripcion reuniones español', no hay presencia en Product Hunt, Reddit r/Mexico, comunidades hispanas.",
+          "recommendation": "1) Comprar dominio maity.app o maity.mx. 2) SEO targets: 'transcribir reunión Zoom español'. 3) Lanzamiento Product Hunt en martes. 4) Posts en r/Mexico, r/Argentina.",
+          "impact": 7,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://www.producthunt.com/"
+          ]
+        },
+        {
+          "id": "BIZ-007",
+          "title": "Sin vendor security questionnaire pre-llenado",
+          "severity": "high",
+          "description": "Cada cliente enterprise envia un cuestionario de seguridad (SIG, CAIQ, custom) antes de firmar. Sin un doc pre-llenado, cada venta toma 2-4 semanas extra mientras se responden preguntas basicas (encryption at rest? data residency? incident response? sub-processors?).",
+          "recommendation": "Crear docs/SECURITY_QUESTIONNAIRE.md con respuestas pre-escritas a las 50 preguntas mas comunes (CAIQ Lite, SIG Lite). Mantener actualizado tras cada release.",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://cloudsecurityalliance.org/research/cloud-controls-matrix/"
+          ]
+        },
+        {
+          "id": "BIZ-008",
+          "title": "Sin MSA/SLA/DPA templates firmables",
+          "severity": "high",
+          "description": "Sin Master Service Agreement, Service Level Agreement, ni Data Processing Agreement listos para firmar, cada venta enterprise se atasca en negociacion legal. El cliente espera ver templates standar de la industria (no que les enviemos uno custom desde cero).",
+          "recommendation": "Crear docs/legal/MSA_TEMPLATE.md, SLA_TEMPLATE.md (99.5 percent uptime, RTO/RPO documentados), DPA_TEMPLATE.md (basado en SCCs EU). Hacerlos disponibles publicamente en /legal del sitio.",
+          "impact": 8,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://commission.europa.eu/law/law-topic/data-protection/international-dimension-data-protection/standard-contractual-clauses-scc_en"
+          ]
+        },
+        {
+          "id": "BIZ-009",
+          "title": "Sin pricing visible para enterprise",
+          "severity": "medium",
+          "description": "README solo lista BYOK gratis como modelo. Para B2B necesitamos al menos un Contact us for enterprise pricing con un formulario. Sin esto, los buyers asumen que no estamos listos para B2B y van a Otter.",
+          "recommendation": "Pagina web /pricing con tres tiers: Free (BYOK), Pro Cloud, Enterprise (contact). Formulario con campos basicos (compania, employees, use case).",
+          "impact": 7,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://www.priceintelligently.com/blog/saas-pricing-models"
+          ]
+        }
+      ]
+    },
+    "qa_testing": {
+      "name": "QA y Testing",
+      "icon": "🧪",
+      "color": "#f39c12",
+      "summary": "Cobertura crítica insuficiente: solo 2 archivos de tests Python, 84 tests Rust en 28 archivos sobre ~80+ módulos en src-tauri/src, CERO tests en frontend Next.js, CERO tests en llama-helper. Sin E2E con webdriver-tauri ni fixtures de audio versionadas.",
+      "findings": [
+        {
+          "id": "QA-001",
+          "title": "Cero tests unitarios en frontend Next.js",
+          "severity": "critical",
+          "description": "Glob '**/*.{test,spec}.{ts,tsx}' en frontend/src devuelve 'No files found'. frontend/package.json no incluye Vitest, Jest, Playwright, ni script 'test'. Toda la lógica UI es no-testeada.",
+          "recommendation": "1) Instalar Vitest + @testing-library/react. 2) Script 'test':'vitest' y 'test:ci':'vitest run --coverage'. 3) Tests críticos primero: AnalyticsConsentSwitch, PreferenceSettings. 4) Meta: 60% cobertura en src/components en 30 días.",
+          "impact": 9,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://vitest.dev/",
+            "https://testing-library.com/"
+          ]
+        },
+        {
+          "id": "QA-002",
+          "title": "Cero tests de integración Tauri E2E con WebDriver",
+          "severity": "high",
+          "description": "No existe configuración de tauri-driver ni Playwright apuntando al binario Tauri. Bugs como 'al hacer clic en Grabar no captura system audio en Windows 11 24H2' solo se descubren en producción.",
+          "recommendation": "1) Instalar tauri-driver y WebdriverIO. 2) frontend/e2e/ con escenarios end-to-end. 3) CI matrix Windows 10/11. 4) Fixtures de audio sintético via Web Audio API mock.",
+          "impact": 8,
+          "effort": 8,
+          "phase": "v3.0",
+          "status": "pending",
+          "references": [
+            "https://v2.tauri.app/develop/tests/webdriver/"
+          ]
+        },
+        {
+          "id": "QA-003",
+          "title": "Cobertura Rust insuficiente: 84 tests sobre 28 archivos vs ~80+ módulos",
+          "severity": "high",
+          "description": "Módulos críticos sin tests: deepgram_provider.rs (solo 9), summary_engine/client.rs (3), ffmpeg_mixer.rs (4), audio/permissions.rs (1), audio/system_audio_stream.rs (1). llama-helper/src tiene 0 tests.",
+          "recommendation": "1) Configurar cargo tarpaulin/grcov. 2) Threshold mínimo 50% global, 70% en módulos audio/transcription. 3) Tests prioritarios: WAV encoding, ffmpeg_mixer, deepgram reconnect, whisper segment. 4) Al menos 10 tests en llama-helper.",
+          "impact": 8,
+          "effort": 7,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://github.com/xd009642/tarpaulin"
+          ]
+        },
+        {
+          "id": "QA-004",
+          "title": "Solo 2 archivos de tests en backend Python",
+          "severity": "high",
+          "description": "backend/tests contiene solo test_api_endpoints.py y test_db.py. backend/app/ tiene múltiples módulos sin cobertura. pytest.ini no tiene --cov ni mínimo.",
+          "recommendation": "1) Agregar pytest-cov a requirements-dev.txt. 2) pytest.ini: addopts = --cov=app --cov-fail-under=60. 3) Crear test_summarization.py, test_whisper_integration.py. 4) Mockear OpenAI/Anthropic con responses.",
+          "impact": 7,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://pytest-cov.readthedocs.io/"
+          ]
+        },
+        {
+          "id": "QA-005",
+          "title": "Sin fixtures de audio versionadas para tests determinísticos",
+          "severity": "medium",
+          "description": "No existe directorio tests/fixtures/audio/. Tests de transcripción dependen de generar audio en runtime o de descargar modelos pesados. Whisper produce salidas distintas según versión.",
+          "recommendation": "1) tests/fixtures/audio/ con: silencio.wav, tono_440hz.wav, voz_es_corta.wav, voz_en_corta.wav, ruido_blanco.wav. 2) Generar con ffmpeg + festival/say. 3) Versionar con git-lfs. 4) Documentar método reproducible.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "pending",
+          "references": [
+            "https://git-lfs.github.com/"
+          ]
+        },
+        {
+          "id": "QA-006",
+          "title": "Sin smoke tests post-release del binario instalado",
+          "severity": "medium",
+          "description": "Después del build .exe/.msi no hay verificación automática que el binario instala, abre, y graba 5 segundos sin crash. Los usuarios son los primeros en reportar crashes.",
+          "recommendation": "1) Workflow 'release-smoke-test' que: instala .msi, ejecuta el .exe via tauri-driver, simula clic en grabar, verifica .wav, mata proceso. 2) Bloquear publicación si falla.",
+          "impact": 7,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://docs.github.com/en/actions"
+          ]
+        },
+        {
+          "id": "QA-007",
+          "title": "Sin tests de regresión para flujo de consent y privacidad",
+          "severity": "high",
+          "description": "Existe AnalyticsConsentSwitch.tsx pero sin test que verifique: default opt-OUT, persistencia, PostHog NO se inicializa antes de aceptación, revocar consent borra cookies/event queue. Una regresión es violación directa de GDPR art. 7.",
+          "recommendation": "1) tests/unit/AnalyticsConsentSwitch.test.tsx. 2) Test de integración Rust verificando que posthog-rs no envía sin flag de consent. 3) Test E2E con MSW/nock interceptando hits.",
+          "impact": 9,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://gdpr-info.eu/art-7-gdpr/"
+          ]
+        },
+        {
+          "id": "QA-008",
+          "title": "AudioChunk literal en test rompe cargo test --workspace (E0063)",
+          "severity": "critical",
+          "description": "frontend/src-tauri/src/audio/incremental_saver.rs:445 construía AudioChunk solo con data, sample_rate y device_type, pero la struct AudioChunk en recording_state.rs:20 también requiere chunk_id (u64) y timestamp (f64). Esto provocaba E0063 'missing fields chunk_id and timestamp' y hacía fallar `cargo test --workspace` con rc=101. Superseded por PR #6 que combina QA-008 + RUST-009 en un fix cohesivo.",
+          "recommendation": "Cambiar `for _ in 0..120` a `for i in 0..120u64` y agregar chunk_id: i, timestamp: i as f64 * 0.5 al literal AudioChunk. CERRAR PR #3 al mergear PR #6.",
+          "impact": 9,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/ponchovillalobos/maity_desktop-1/pull/6",
+            "https://doc.rust-lang.org/error_codes/E0063.html"
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/6"
+        },
+        {
+          "id": "QA-FRAMEWORK-2026",
+          "title": "Framework de tests automatizados end-to-end",
+          "severity": "critical",
+          "description": "Antes cada iteracion requeria que el usuario probara manualmente. Ahora hay un framework automatizado: transcribe_cli binario Rust + tests/benchmark_transcription.py (WER/CER/speed vs ground truth) + tests/benchmark_performance.ps1 (cold start, preload time, RAM) + fixtures desde maity_recorder (4 audios reales en espanol con ground truth).",
+          "recommendation": "Correr python tests/benchmark_transcription.py --model base en cada iteracion. Registra metricas en tests/results/*.json y en memory/METRICS_HISTORY.md. Falla el build si WER > 25%.",
+          "impact": 10,
+          "effort": 5,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #32] 5 agentes paralelos entregaron: fixtures copiados, E2E strategy docs, WER harness, perf harness, transcribe_cli CLI. Primer run en curso."
+        },
+        {
+          "id": "QA-TRANSCRIBE-CLI",
+          "title": "CLI Rust para transcripcion headless",
+          "severity": "high",
+          "description": "frontend/src-tauri/src/bin/transcribe_cli.rs: binario standalone que carga WhisperEngine, transcribe un .wav, emite JSON con text + segments + speed_factor. Permite benchmarks sin lanzar GUI. Verificado funcional con audio real en espanol: 155s audio en 11.4s (13.58x realtime).",
+          "recommendation": "cargo build --bin transcribe_cli. Uso: transcribe_cli --audio file.wav --model base --language es --json",
+          "impact": 8,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #32] Verificado runtime con A_Poncho_Mensaje.wav"
+        }
+      ]
+    },
+    "performance": {
+      "name": "Performance",
+      "icon": "⚡",
+      "color": "#2980b9",
+      "summary": "Tauri con Rust+Next.js que captura mic+system audio simultáneamente a 48kHz, ejecuta whisper-rs / ONNX Parakeet local, RNNoise y EBU R128. Riesgos: tamaño del binario (~150-300MB), uso de RAM en grabaciones largas, latencia E2E mic→pantalla, y dropped frames en UI durante grabación intensa.",
+      "findings": [
+        {
+          "id": "PERF-001",
+          "title": "Binario ~150-300MB por whisper-rs+ort+ffmpeg-sidecar+symphonia",
+          "severity": "high",
+          "description": "Cargo.toml incluye whisper-rs (~50MB), ort/ONNX Runtime (~80MB Parakeet), nnnoiseless, silero_rs, ffmpeg-sidecar (~80MB), symphonia, ebur128, rubato. .msi de 200-300MB. Para descarga directa esto incrementa abandono de instalación 30-40% en LATAM.",
+          "recommendation": "1) Hacer ort, parakeet, whisper opt-in via feature flags y descarga lazy post-install. 2) Reemplazar ffmpeg-sidecar por descarga on-demand. 3) strip + LTO + opt-level='z'. 4) Auditar con cargo bloat. Meta: <80MB instalador inicial.",
+          "impact": 8,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://github.com/RazrFalcon/cargo-bloat"
+          ]
+        },
+        {
+          "id": "PERF-002",
+          "title": "Latencia mic+system audio no medida ni instrumentada",
+          "severity": "high",
+          "description": "Pipeline: Microphone → Resample 48kHz → Mix → Encode → Deepgram WebSocket. No hay métricas de latencia E2E (mic input → texto en pantalla). Para una app 'real-time', latencias >2s degradan UX.",
+          "recommendation": "1) Instrumentar con tracing spans cada etapa. 2) Exportar p50/p95/p99 a Sentry/PostHog. 3) Dashboard interno con histograma. 4) Meta: p95 <800ms con Deepgram, <2s con Whisper local.",
+          "impact": 9,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://docs.rs/tracing/"
+          ]
+        },
+        {
+          "id": "PERF-003",
+          "title": "Whisper local puede consumir >4GB RAM sin límite enforced",
+          "severity": "critical",
+          "description": "whisper-rs cargando modelo large-v3 consume 3.5-5GB. README dice '4GB de RAM minimo' lo cual es insuficiente. system_monitor.rs existe pero no se ve enforcement. Resultado: OOM crashes en máquinas modestas.",
+          "recommendation": "1) Antes de cargar modelo Whisper, leer free RAM con sysinfo y rechazar si <model_size*1.5. 2) UI que muestra requisitos (tiny=400MB, base=1GB, small=2GB, medium=5GB, large=10GB). 3) Liberar modelo cuando recording termina. 4) Test de stress 4h.",
+          "impact": 10,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "references": [
+            "https://github.com/openai/whisper#available-models"
+          ],
+          "notes": " [2026-04-08 iter #26 critical-pack]"
+        },
+        {
+          "id": "PERF-004",
+          "title": "Startup time no medido — Tauri+Next.js+whisper init puede ser >5s",
+          "severity": "medium",
+          "description": "Tauri 2.x con Next.js + whisper-rs cargando + sqlx migraciones + posthog/sentry init, el cold start puede superar 5s en HDD. No hay splash screen ni instrumentación de tiempo a 'first interactive'.",
+          "recommendation": "1) Medir startup con tracing. 2) Lazy-load whisper model. 3) Diferir sentry/posthog init a after window-shown. 4) Splash screen Tauri 2 setup hook. Meta: window visible <1.5s, interactive <3s.",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://v2.tauri.app/learn/splashscreen/"
+          ]
+        },
+        {
+          "id": "PERF-005",
+          "title": "Dropped frames UI durante grabación por audio en main thread",
+          "severity": "high",
+          "description": "Si los callbacks de cpal/WASAPI o el mix ffmpeg corren en el mismo runtime tokio que sirve invokes IPC, picos de procesamiento (RNNoise, ebur128) bloquean handlers IPC y causan jank en UI.",
+          "recommendation": "1) Runtime tokio dedicado con 2 worker threads para audio. 2) tokio::task::spawn_blocking para RNNoise/ebur128. 3) Throttle de updates de transcripción a max 3/s con react-window. 4) Profiling con tracy/puffin durante grabación 1h.",
+          "impact": 8,
+          "effort": 6,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://github.com/EmbarkStudios/puffin"
+          ]
+        },
+        {
+          "id": "PERF-006",
+          "title": "Sin benchmarks criterion ejecutados en CI a pesar de declarar dep",
+          "severity": "medium",
+          "description": "Cargo.toml declara criterion como dev-dependency con feature async_tokio, pero no se encuentran benches/ ni job de CI. Regresiones de performance entre releases pasan desapercibidas.",
+          "recommendation": "1) frontend/src-tauri/benches/ con: audio_resample, mix_two_streams, deepgram_pcm_encode, vad_silero. 2) Workflow 'bench' en cada PR comparando contra main. 3) Comentario automático si regresión >10%.",
+          "impact": 6,
+          "effort": 5,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://bheisler.github.io/criterion.rs/book/"
+          ]
+        },
+        {
+          "id": "PERF-007",
+          "title": "SQLite sin índices documentados y sin VACUUM periódico",
+          "severity": "medium",
+          "description": "sqlx con sqlite almacena meetings + transcripts + summaries. Sin retención (LEG-003), la base crece indefinidamente. Sin índices en (created_at, meeting_id) las queries degradan O(n). Sin PRAGMA journal_mode=WAL, escrituras durante grabación bloquean lecturas.",
+          "recommendation": "1) EXPLAIN QUERY PLAN en todas las queries, agregar índices. 2) PRAGMA journal_mode=WAL. 3) Tarea mensual VACUUM ANALYZE. 4) Tracing warnings para queries >50ms. 5) Test con 10k meetings simulados.",
+          "impact": 6,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://www.sqlite.org/wal.html"
+          ]
+        },
+        {
+          "id": "UX-012",
+          "title": "ONNX session de Parakeet acumula memoria nativa sin reciclaje",
+          "severity": "medium",
+          "description": "Las arenas internas de onnxruntime crecen lentamente durante sesiones largas. No hay mecanismo de reciclaje de la sesión, lo que llevaría a reuniones de >1h a consumos de RAM crecientes.",
+          "recommendation": "Añadir AtomicU64 inference_count a ParakeetEngine. Cada PARAKEET_RECYCLE_EVERY=100 inferencias exitosas drop del current_model + reload desde disco. ~1 recycle/50s de voz continua, bajo umbral perceptible. PR #22.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v2.0",
+          "status": "in-progress",
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/22",
+          "references": []
+        },
+        {
+          "id": "PERF-005-FIX",
+          "title": "PERF-005 fix: leer modelo de config + discover_models antes de preload",
+          "severity": "critical",
+          "description": "El preload del modelo Parakeet fallaba silenciosamente porque: (1) hardcodeaba 'parakeet-tdt-0.6b-v2' pero el modelo real es 'parakeet-tdt-0.6b-v3-int8', (2) no llamaba discover_models() antes de load_model() dejando available_models vacio. Resultado: usuario experimentaba 4-5s de lazy load al primer click en Grabar.",
+          "recommendation": "Leer transcript_config de DB para obtener el model name real. Llamar engine.discover_models() antes de engine.load_model() en el startup.",
+          "impact": 10,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #29] Verificado en logs: preload exitoso en 2s (2:28:05 start -> 2:28:07 complete)"
+        },
+        {
+          "id": "PERF-VAD-LATENCY",
+          "title": "QW-1 audit: VAD 800/1000ms -> 300/400ms",
+          "severity": "high",
+          "description": "Audit transcripcion identifico que MIN_SPEECH_MS=800 y MIN_SILENCE_MS=1000 eran demasiado conservadores, generando 1.6-2.3s de latencia antes del primer texto en pantalla. Reducir a 300/400 recorta ~1.1s de latencia percibida.",
+          "recommendation": "vad.rs:50-51 constantes del tuning UX-011 reducidas. Mas chunks cortos, pero filtro UX-013 descarta hallucinations.",
+          "impact": 8,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #30] Audit QW-1 aplicado"
+        },
+        {
+          "id": "PERF-CHUNK-ACCUMULATOR",
+          "title": "QW-4 audit: ChunkAccumulator tiers unificados a 0.3/4.0/400ms",
+          "severity": "high",
+          "description": "Audit encontro que hardware potente tenia min_duration y flush_timeout MAS ALTOS que hardware debil, haciendo laptops Ultra mas laggy que Low. Unificado a (0.3, 4.0, 400ms) para todos los tiers.",
+          "recommendation": "worker.rs:550-555 elimino la logica per-tier.",
+          "impact": 7,
+          "effort": 1,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #30] Audit QW-4 aplicado"
+        },
+        {
+          "id": "TRANSCRIPTION-AUDIT",
+          "title": "Audit completo del pipeline de transcripcion vs competidores moviles",
+          "severity": "high",
+          "description": "Agente general-purpose entrego docs/audit/TRANSCRIPTION_OPTIMIZATION_AUDIT.md (274 lineas) con 8 problemas identificados (P-1 a P-8), 5 quick wins (QW-1 a QW-5) y 4 movimientos estrategicos. Hallazgo critico P-1: Parakeet 0.6B v3 es solo ingles, el usuario espanol obtiene basura que el filtro borra silenciosamente.",
+          "recommendation": "Ver docs/audit/TRANSCRIPTION_OPTIMIZATION_AUDIT.md. Prioridad: default a Deepgram para es-*, aplicar QW-2 (2 workers), QW-3 (DirectML execution provider).",
+          "impact": 10,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "in-progress",
+          "notes": "[2026-04-08 iter #30] QW-1 y QW-4 aplicados en esta rama, QW-2/3/5 pendientes"
+        }
+      ]
+    }
+  },
+  "roadmap": {
+    "v1.0": {
+      "label": "Quick Wins (2-4 semanas)",
+      "items": [
+        "RUST-009",
+        "QA-008",
+        "RUST-008",
+        "SEC-001",
+        "SEC-002",
+        "SEC-006",
+        "RUST-003",
+        "RUST-007",
+        "RUST-010",
+        "PY-001",
+        "PY-002",
+        "PY-003",
+        "PY-004",
+        "PY-005",
+        "PY-007",
+        "FE-003",
+        "FE-005",
+        "FE-006",
+        "FE-007",
+        "UX-002",
+        "UX-004",
+        "UX-005",
+        "UX-006",
+        "STT-003",
+        "LLM-004",
+        "LLM-006",
+        "LLM-007",
+        "LLM-008",
+        "OPS-006",
+        "OPS-007",
+        "LEG-001",
+        "LEG-004",
+        "LEG-005",
+        "LEG-006",
+        "BIZ-002",
+        "QA-005",
+        "RUST-011"
+      ]
+    },
+    "v2.0": {
+      "label": "Major Features (2-3 meses)",
+      "items": [
+        "SEC-003",
+        "SEC-005",
+        "SEC-007",
+        "RUST-002",
+        "RUST-004",
+        "RUST-005",
+        "RUST-006",
+        "PY-006",
+        "FE-001",
+        "FE-002",
+        "FE-004",
+        "UX-001",
+        "UX-003",
+        "UX-007",
+        "STT-001",
+        "STT-002",
+        "STT-004",
+        "STT-005",
+        "STT-006",
+        "STT-007",
+        "LLM-001",
+        "LLM-002",
+        "LLM-003",
+        "LLM-005",
+        "OPS-001",
+        "OPS-002",
+        "OPS-003",
+        "OPS-004",
+        "OPS-005",
+        "LEG-002",
+        "LEG-003",
+        "LEG-007",
+        "BIZ-001",
+        "BIZ-003",
+        "BIZ-004",
+        "BIZ-005",
+        "BIZ-006",
+        "QA-001",
+        "QA-003",
+        "QA-004",
+        "QA-006",
+        "QA-007",
+        "PERF-001",
+        "PERF-002",
+        "PERF-003",
+        "PERF-004",
+        "PERF-005",
+        "PERF-006",
+        "PERF-007",
+        "BIZ-007",
+        "BIZ-008",
+        "BIZ-009",
+        "OPS-009",
+        "OPS-010",
+        "LEG-008"
+      ]
+    },
+    "v3.0": {
+      "label": "Expansión (6+ meses)",
+      "items": [
+        "SEC-004",
+        "RUST-001",
+        "QA-002",
+        "SEC-008",
+        "SEC-009",
+        "SEC-010",
+        "OPS-008"
+      ]
+    }
+  }
+}

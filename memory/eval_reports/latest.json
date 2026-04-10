@@ -1,0 +1,202 @@
+{
+  "timestamp": "2026-04-10T10:05:42.966125",
+  "overall": "WARN",
+  "assembly_iter": 32,
+  "assembly_commits": 37,
+  "assembly_findings": 115,
+  "agents": {
+    "auditor": {
+      "agent": "auditor",
+      "status": "warn",
+      "issues": [
+        {
+          "severity": "low",
+          "msg": "Findings in-progress sin PR link (18): ['UX-ACCOUNT-BADGE', 'UX-SIMPLIFY-WHISPER-OFF', 'UX-BRAND-MAITY', 'UX-RECOVERY-ERRORS', 'UX-MINIMIZED-BUTTON']…"
+        }
+      ],
+      "top_findings": [
+        {
+          "id": "OPS-006",
+          "title": "Test de pre-firma siempre opcional: regresiones de signing pasan al build",
+          "severity": "medium",
+          "description": "build-windows.yml:246 marca 'Pre-Build Signing Test' con if test-signing == 'true' (default false). Cuando falla el signing real al final del build (~50min), se desperdician minutos de runner.",
+          "recommendation": "Forzar pre-build signing test cuando sign-build=true (eliminar el toggle test-signing). Si DigiCert healthcheck falla, abortar antes de cualquier compilación.",
+          "impact": 5,
+          "effort": 2,
+          "phase": "v1.0",
+          "status": "pending",
+          "references": [
+            ".github/workflows/build-windows.yml"
+          ]
+        },
+        {
+          "id": "LLM-004",
+          "title": "Prompt español/inglés mezclado y no localizado",
+          "severity": "medium",
+          "description": "El prompt en transcript_processor.py:174-196 está enteramente en inglés ('Given the following meeting transcript chunk...'), pero las reuniones son en español. Esto degrada la calidad de extracción de Action Items y nombres propios en español.",
+          "recommendation": "Crear plantillas de prompt por idioma (es, en) en backend/app/prompts/. Detectar idioma de la transcripción (langdetect) o usar el setting del usuario.",
+          "impact": 7,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "pending",
+          "references": [
+            "backend/app/transcript_processor.py"
+          ]
+        },
+        {
+          "id": "QA-007",
+          "title": "Sin tests de regresión para flujo de consent y privacidad",
+          "severity": "high",
+          "description": "Existe AnalyticsConsentSwitch.tsx pero sin test que verifique: default opt-OUT, persistencia, PostHog NO se inicializa antes de aceptación, revocar consent borra cookies/event queue. Una regresión es violación directa de GDPR art. 7.",
+          "recommendation": "1) tests/unit/AnalyticsConsentSwitch.test.tsx. 2) Test de integración Rust verificando que posthog-rs no envía sin flag de consent. 3) Test E2E con MSW/nock interceptando hits.",
+          "impact": 9,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://gdpr-info.eu/art-7-gdpr/"
+          ]
+        },
+        {
+          "id": "SEC-006",
+          "title": "Whisper server escucha en 0.0.0.0",
+          "severity": "medium",
+          "description": "backend/Dockerfile.server-cpu:85 fija WHISPER_HOST=0.0.0.0 y EXPOSE 8178. En equipos con la red en perfil Público, cualquiera en la LAN puede mandar audio al servidor de Whisper sin autenticación.",
+          "recommendation": "Por defecto bind a 127.0.0.1; documentar override explícito si el usuario quiere acceso LAN. Añadir token bearer simple en entrypoint.sh o requerir reverse proxy.",
+          "impact": 6,
+          "effort": 3,
+          "phase": "v1.0",
+          "status": "pending",
+          "references": [
+            "https://owasp.org/www-project-top-ten/"
+          ]
+        },
+        {
+          "id": "UX-001",
+          "title": "Sin atajos globales de teclado para iniciar/parar grabación",
+          "severity": "high",
+          "description": "Grep en frontend/src-tauri no encuentra ningún uso de global_shortcut. tauri.conf.json no incluye el plugin tauri-plugin-global-shortcut. El usuario debe abrir la ventana o el tray para iniciar/parar una grabación, lo cual interrumpe el flujo durante una llamada activa.",
+          "recommendation": "Añadir tauri-plugin-global-shortcut, registrar capability, y exponer en Settings UI shortcuts configurables (default Ctrl+Shift+R inicia/para, Ctrl+Shift+P pausa).",
+          "impact": 8,
+          "effort": 4,
+          "phase": "v2.0",
+          "status": "pending",
+          "references": [
+            "https://v2.tauri.app/plugin/global-shortcut/"
+          ]
+        }
+      ],
+      "duration_s": 0.24
+    },
+    "validator": {
+      "agent": "validator",
+      "status": "pass",
+      "gates": [
+        {
+          "gate": "cargo_check",
+          "pass": true,
+          "detail": "ring, u32>,\n   |     ^^^^^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `maity-desktop` (lib) generated 6 warnings (run `cargo fix --lib -p maity-desktop` to apply 5 suggestions)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.79s"
+        },
+        {
+          "gate": "dsp_tests",
+          "pass": true,
+          "detail": "s` to apply 7 suggestions)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.40s\n     Running unittests src\\lib.rs (D:\\Maity_Desktop\\target\\debug\\deps\\app_lib-65a6880f480b4e83.exe)"
+        },
+        {
+          "gate": "text_cleanup_tests",
+          "pass": true,
+          "detail": "s` to apply 7 suggestions)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.05s\n     Running unittests src\\lib.rs (D:\\Maity_Desktop\\target\\debug\\deps\\app_lib-65a6880f480b4e83.exe)"
+        },
+        {
+          "gate": "pytest_backend",
+          "pass": true,
+          "detail": "ppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\opentelemetry\\_events\\__init__.py:201: DeprecationWarning: You should use `ProxyLoggerProvider` instead. Deprecated since version 1.39.0 and will be removed in a future release.\n    _PROXY_EVENT_LOGGER_PROVIDER = ProxyEventLoggerProvider()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n35 passed, 5 warnings in 3.52s"
+        },
+        {
+          "gate": "python_syntax",
+          "pass": true,
+          "detail": "ok"
+        }
+      ],
+      "duration_s": 49.38
+    },
+    "janitor": {
+      "agent": "janitor",
+      "status": "ok",
+      "items": [
+        {
+          "type": "build_artifacts",
+          "large_files": 3,
+          "tip": "Ejecutar 'cargo clean' si necesitas espacio"
+        }
+      ],
+      "duration_s": 0.08
+    },
+    "doc_checker": {
+      "agent": "doc_checker",
+      "status": "warn",
+      "gaps": [
+        {
+          "type": "undocumented_module",
+          "file": "dsp.rs",
+          "doc": "CLAUDE.md"
+        },
+        {
+          "type": "undocumented_module",
+          "file": "text_cleanup.rs",
+          "doc": "CLAUDE.md"
+        },
+        {
+          "type": "undocumented_module",
+          "file": "parakeet_engine.rs",
+          "doc": "CLAUDE.md"
+        }
+      ],
+      "duration_s": 0.0
+    }
+  },
+  "top_pending": [
+    {
+      "id": "OPS-006",
+      "title": "Test de pre-firma siempre opcional: regresiones de signing pasan al build",
+      "severity": "medium",
+      "description": "build-windows.yml:246 marca 'Pre-Build Signing Test' con if test-signing == 'true' (default false). Cuando falla el signing real al final del build (~50min), se desperdician minutos de runner.",
+      "recommendation": "Forzar pre-build signing test cuando sign-build=true (eliminar el toggle test-signing). Si DigiCert healthcheck falla, abortar antes de cualquier compilación.",
+      "impact": 5,
+      "effort": 2,
+      "phase": "v1.0",
+      "status": "pending",
+      "references": [
+        ".github/workflows/build-windows.yml"
+      ]
+    },
+    {
+      "id": "LLM-004",
+      "title": "Prompt español/inglés mezclado y no localizado",
+      "severity": "medium",
+      "description": "El prompt en transcript_processor.py:174-196 está enteramente en inglés ('Given the following meeting transcript chunk...'), pero las reuniones son en español. Esto degrada la calidad de extracción de Action Items y nombres propios en español.",
+      "recommendation": "Crear plantillas de prompt por idioma (es, en) en backend/app/prompts/. Detectar idioma de la transcripción (langdetect) o usar el setting del usuario.",
+      "impact": 7,
+      "effort": 3,
+      "phase": "v1.0",
+      "status": "pending",
+      "references": [
+        "backend/app/transcript_processor.py"
+      ]
+    },
+    {
+      "id": "QA-007",
+      "title": "Sin tests de regresión para flujo de consent y privacidad",
+      "severity": "high",
+      "description": "Existe AnalyticsConsentSwitch.tsx pero sin test que verifique: default opt-OUT, persistencia, PostHog NO se inicializa antes de aceptación, revocar consent borra cookies/event queue. Una regresión es violación directa de GDPR art. 7.",
+      "recommendation": "1) tests/unit/AnalyticsConsentSwitch.test.tsx. 2) Test de integración Rust verificando que posthog-rs no envía sin flag de consent. 3) Test E2E con MSW/nock interceptando hits.",
+      "impact": 9,
+      "effort": 4,
+      "phase": "v2.0",
+      "status": "pending",
+      "references": [
+        "https://gdpr-info.eu/art-7-gdpr/"
+      ]
+    }
+  ]
+}
