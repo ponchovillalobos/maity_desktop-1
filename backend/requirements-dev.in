@@ -1,0 +1,9 @@
+# PY-006: dependencias directas de desarrollo/test.
+# Genera requirements-dev.txt con hashes via:
+#   pip-compile --generate-hashes -o requirements-dev.txt requirements-dev.in
+
+-r requirements.in
+
+pytest==8.3.4
+pytest-asyncio==0.25.0
+httpx==0.28.1
