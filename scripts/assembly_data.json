@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-08",
   "evaluation_cycle": 10,
-  "commits": 41,
-  "iterations": 34,
+  "commits": 43,
+  "iterations": 35,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -191,10 +191,11 @@
           "impact": 7,
           "effort": 4,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "https://docs.sentry.io/platforms/rust/"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/25"
         },
         {
           "id": "RUST-003",
