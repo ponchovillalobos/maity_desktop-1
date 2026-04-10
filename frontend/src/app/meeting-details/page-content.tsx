@@ -7,6 +7,7 @@ import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import Analytics from '@/lib/analytics';
 import { TranscriptPanel } from '@/components/MeetingDetails/TranscriptPanel';
 import { SummaryPanel } from '@/components/MeetingDetails/SummaryPanel';
+import { BluetoothPlaybackWarning } from '@/components/recording/BluetoothPlaybackWarning';
 
 // Custom hooks
 import { useMeetingData } from '@/hooks/meeting-details/useMeetingData';
@@ -152,6 +153,10 @@ export default function PageContent({
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="flex flex-col h-screen bg-background"
     >
+      {/* UX-007: advertencia Bluetooth para prevenir confusión con audio distorsionado */}
+      <div className="px-4 pt-3">
+        <BluetoothPlaybackWarning />
+      </div>
       <div className="flex flex-1 overflow-hidden">
         <TranscriptPanel
           transcripts={meetingData.transcripts}
