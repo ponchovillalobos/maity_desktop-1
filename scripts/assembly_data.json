@@ -2,8 +2,8 @@
   "version": "1.0",
   "last_updated": "2026-04-08",
   "evaluation_cycle": 10,
-  "commits": 47,
-  "iterations": 37,
+  "commits": 49,
+  "iterations": 38,
   "project": {
     "name": "Maity Desktop",
     "version": "0.2.31",
@@ -672,10 +672,11 @@
           "impact": 5,
           "effort": 4,
           "phase": "v2.0",
-          "status": "pending",
+          "status": "in-progress",
           "references": [
             "BLUETOOTH_PLAYBACK_NOTICE.md"
-          ]
+          ],
+          "pr_url": "https://github.com/ponchovillalobos/maity_desktop-1/pull/28"
         },
         {
           "id": "UX-010",
