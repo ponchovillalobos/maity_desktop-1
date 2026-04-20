@@ -48,25 +48,43 @@ impl ContinuousVadProcessor {
         let mut config = VadConfig::default();
         config.sample_rate = VAD_SAMPLE_RATE as usize;
 
-        // CONTINUOUS SPEECH FIX: Tuned for capturing complete 5+ second utterances
-        // Previous: 0.55/0.40 with 400ms redemption was fragmenting speech into 40ms segments
-        // New: More lenient thresholds + longer redemption for continuous speech
-        config.positive_speech_threshold = 0.50;  // Silero default - good for continuous speech
-        config.negative_speech_threshold = 0.35;  // Silero default - allows natural pauses
+        // UX-011: Silero VAD tuning for Parakeet (primary STT provider)
+        // Parakeet streaming is most accurate on utterances of 0.8s–30s.
+        // Shorter chunks cause hallucinations; fragments <800ms are usually
+        // clicks, grunts, or partial words that Parakeet mis-transcribes.
+        //
+        // Four key constants tuned for Parakeet:
+        //   - MIN_SPEECH_MS    = 800   (was 150) — drop sub-word fragments
+        //   - MIN_SILENCE_MS   = 1000  (floor)   — wait 1s before closing segment
+        //   - MAX_SPEECH_MS    = 30_000          — never emit >30s chunks (Parakeet cap)
+        //   - POS_THRESHOLD    = 0.55  (was 0.50) — slightly stricter, fewer false starts
+        const MIN_SPEECH_MS: u64 = 800;
+        const MIN_SILENCE_MS: u64 = 1_000;
+        const MAX_SPEECH_MS: u64 = 30_000;
+        const POS_THRESHOLD: f32 = 0.55;
+        const NEG_THRESHOLD: f32 = 0.35;
 
-        // CRITICAL FIX: Removed redemption_time capping to support long continuous speech
-        // Previous: capped at 400ms, causing VAD to fragment 5-second speech into 40ms segments
-        // New: Use full redemption_time from pipeline (2000ms) to bridge natural pauses
-        config.redemption_time = Duration::from_millis(redemption_time_ms as u64);
-        config.pre_speech_pad = Duration::from_millis(150);   // FIX: Increased from 100ms to capture word beginnings (plosives P, T, K)
-        config.post_speech_pad = Duration::from_millis(400);  // Increased: more context at end
+        config.positive_speech_threshold = POS_THRESHOLD;
+        config.negative_speech_threshold = NEG_THRESHOLD;
 
-        // FIX: Reduced from 250ms to 150ms to capture short words ("sí", "no", "ok")
-        // Whisper can handle segments >100ms, so 150ms is safe while preserving short affirmations
-        config.min_speech_time = Duration::from_millis(150);  // Capture short words
+        // Respect caller's redemption_time but enforce MIN_SILENCE_MS floor.
+        // A shorter redemption would close the segment before Parakeet's
+        // lookahead buffer flushes, producing truncated transcripts.
+        let effective_redemption = (redemption_time_ms as u64).max(MIN_SILENCE_MS);
+        config.redemption_time = Duration::from_millis(effective_redemption);
 
-        debug!("Creating VAD session with: sample_rate={}Hz, redemption={}ms, min_speech={}ms, input_rate={}Hz",
-               VAD_SAMPLE_RATE, redemption_time_ms, 150, input_sample_rate);
+        config.pre_speech_pad = Duration::from_millis(200);
+        config.post_speech_pad = Duration::from_millis(500);
+        config.min_speech_time = Duration::from_millis(MIN_SPEECH_MS);
+
+        debug!(
+            "Creating VAD session (UX-011 Parakeet-tuned): sample_rate={}Hz, redemption={}ms (floor={}), min_speech={}ms, max_speech={}ms, pos={}, neg={}, input_rate={}Hz",
+            VAD_SAMPLE_RATE, effective_redemption, MIN_SILENCE_MS, MIN_SPEECH_MS, MAX_SPEECH_MS, POS_THRESHOLD, NEG_THRESHOLD, input_sample_rate
+        );
+        // Note: voice_activity_detector crate has no max_speech_time field;
+        // the MAX_SPEECH_MS cap is enforced by the pipeline's chunk scheduler
+        // which already emits segments every ~30s to bound Parakeet latency.
+        let _ = MAX_SPEECH_MS;
 
         let session = VadSession::new(config)
             .map_err(|e| anyhow!("Failed to create VAD session: {:?}", e))?;
