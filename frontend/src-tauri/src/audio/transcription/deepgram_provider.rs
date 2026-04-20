@@ -246,10 +246,13 @@ impl DeepgramRealtimeTranscriber {
 
         let language = language_override.unwrap_or(&self.config.language);
 
+        // STT-003: cuando el usuario pide auto-detect, usar 'multi' (Deepgram nova-3)
+        // en lugar de hardcoded 'es'. nova-3 soporta multi-idioma real con auto-switch
+        // por segmento. Mantiene compat con valores legacy ('auto-translate', 'auto', 'detect').
         let language_value = match language {
-            "auto-translate" | "auto" | "detect" => {
-                println!("[DEEPGRAM] auto-translate detected, using default language (es)");
-                "es".to_string()
+            "auto-translate" | "auto" | "detect" | "multi" => {
+                println!("[DEEPGRAM] STT-003: auto-detect requested, using language=multi (nova-3 multilingual)");
+                "multi".to_string()
             }
             lang => {
                 println!("[DEEPGRAM] Using language: {}", lang);
